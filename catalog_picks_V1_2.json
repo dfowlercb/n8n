@@ -1,0 +1,337 @@
+{
+  "name": "catalog picks - UPDATED",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "16FJfeJXH-RSjPx6xs9Ja_tJ8SEVtmB0G",
+          "mode": "list",
+          "cachedResultName": "current_seasonal_baseline.csv",
+          "cachedResultUrl": "https://drive.google.com/file/d/16FJfeJXH-RSjPx6xs9Ja_tJ8SEVtmB0G/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -400,
+        -16
+      ],
+      "id": "e468ec25-cf67-4811-9ead-e0d465f8a87e",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "skipRecordsWithErrors": {
+            "value": {
+              "enabled": true,
+              "maxSkippedRecords": 10
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -208,
+        -16
+      ],
+      "id": "3f404dae-4b8d-4c4b-a9f9-94dfe3a83c85",
+      "name": "Extract from File",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- CONFIGURATION ---\nconst MAX_PAGES = 64;\nconst ITEMS_PER_PAGE = 10;\nconst HERO_ITEMS_COUNT = 30; // Pages 1-3\n\n// Helper to clean currency strings \"$1,000.00\" -> 1000.00\nfunction cleanMoney(val) {\n  if (typeof val === 'number') return val;\n  if (!val) return 0;\n  return parseFloat(val.toString().replace(/[$,%]/g, ''));\n}\n\n// 1. Process all incoming items\nlet allItems = items.map(item => {\n  const json = item.json;\n  \n  // Calculate Scores (Simplified Normalization)\n  // Note: For true normalization we'd need max values, but raw values work for sorting relative to each other\n  const sales = cleanMoney(json['Promo Net Sales']);\n  const margin = cleanMoney(json['Promo Margin %']);\n  const lift = cleanMoney(json['Promo Lift Sales']);\n  \n  // Weighted Score: 50% Sales, 30% Margin, 20% Lift\n  // We multiply margin by 100 to make it comparable to sales figures roughly, or just rely on the sort\n  // Better approach for simple sort: Just weighted sum of raw values if scales differ wildly? \n  // Let's use a simplified \"Power Score\" for n8n without external libraries:\n  const score = (sales * 0.5) + (lift * 0.2) + (margin * 1000 * 0.3); \n\n  // Infer Category if missing\n  let cat = json['OFFICERS_CATEGORY'] || json['Category'] || 'General';\n  const desc = (json['Item Description'] || '').toUpperCase();\n  \n  if (!json['OFFICERS_CATEGORY']) {\n    if (desc.includes('BIBLE') || desc.includes('NIV') || desc.includes('ESV')) cat = 'BIBLES';\n    else if (desc.includes('HC') || desc.includes('PB') || desc.includes('BOOK')) cat = 'BOOKS';\n    else if (desc.includes('GIFT') || desc.includes('SET')) cat = 'GIFTS';\n  }\n\n  return {\n    json: {\n      ...json,\n      clean_sales: sales,\n      clean_category: cat,\n      catalog_score: score\n    }\n  };\n});\n\n// 2. Filter valid items (Sales > 0)\nallItems = allItems.filter(i => i.json.clean_sales > 0);\n\n// 3. Global Sort by Score\nallItems.sort((a, b) => b.json.catalog_score - a.json.catalog_score);\n\n// 4. Limit to Top 640\nconst topItems = allItems.slice(0, MAX_PAGES * ITEMS_PER_PAGE);\n\n// 5. Layout Strategy\n\n// Part A: Heroes (Top 30 Global)\nconst heroes = topItems.slice(0, HERO_ITEMS_COUNT);\nheroes.forEach((item, index) => {\n  const page = Math.floor(index / ITEMS_PER_PAGE) + 1;\n  item.json.Layout_Section = `Page ${page} (Hero/Best Seller)`;\n});\n\n// Part B: The Body (Remaining Items)\nconst body = topItems.slice(HERO_ITEMS_COUNT);\n\n// Sort Body by Category -> Then Score\nbody.sort((a, b) => {\n  if (a.json.clean_category < b.json.clean_category) return -1;\n  if (a.json.clean_category > b.json.clean_category) return 1;\n  return b.json.catalog_score - a.json.catalog_score;\n});\n\n// Assign Pages to Body\nconst startPage = 4;\nbody.forEach((item, index) => {\n  const page = startPage + Math.floor(index / ITEMS_PER_PAGE);\n  item.json.Layout_Section = `Page ${page} (${item.json.clean_category})`;\n});\n\n// 6. Combine and Return\nconst finalCatalog = [...heroes, ...body];\n\n// Return clean list\nreturn finalCatalog;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -32
+      ],
+      "id": "54171be6-17da-48c8-ad29-eeda0f913e6e",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4b79cdfd-ca2b-4769-a484-27a5cc0b76b6",
+              "leftValue": "={{ $json['Promo Net Sales'] }}",
+              "rightValue": 18000,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        288,
+        -16
+      ],
+      "id": "ca4a5e54-7c08-425d-9ba9-c2d8674c878e",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3309e6f6-2adf-4549-a0e5-1d35f8b68165",
+              "name": "Promo Net Sales",
+              "value": "={{ $json['Promo Net Sales'] }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        160,
+        -32
+      ],
+      "id": "cb422243-b704-4d7c-a735-ec90519c4548",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "amount": 2.5
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        -16
+      ],
+      "id": "964d8401-8dfc-455c-b659-278074484a07",
+      "name": "Wait (Anti-Bot Delay)",
+      "webhookId": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.christianbook.com/Christian/Books/product?sku={{$json.SKU}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "en-US,en;q=0.9"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "gzip, deflate, br"
+            },
+            {
+              "name": "Connection",
+              "value": "keep-alive"
+            },
+            {
+              "name": "Upgrade-Insecure-Requests",
+              "value": "1"
+            },
+            {
+              "name": "Sec-Fetch-Dest",
+              "value": "document"
+            },
+            {
+              "name": "Sec-Fetch-Mode",
+              "value": "navigate"
+            },
+            {
+              "name": "Sec-Fetch-Site",
+              "value": "none"
+            },
+            {
+              "name": "Sec-Fetch-User",
+              "value": "?1"
+            },
+            {
+              "name": "Cache-Control",
+              "value": "max-age=0"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        624,
+        -16
+      ],
+      "id": "8a7cdb60-4832-4d30-b99b-dc2626e81eab",
+      "name": "HTTP Request - Enhanced"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        -16
+      ],
+      "id": "94ad8c59-d313-4ea9-a661-b80bc36dc054",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of items) {\n  const html = item.json.data || '';\n  \n  let description = '';\n  let productTitle = '';\n  let pageStatus = '';\n  \n  // Extract product title\n  const titleMatch = html.match(/<title>(.*?)<\\/title>/);\n  productTitle = titleMatch ? titleMatch[1].replace(' - Christianbook.com', '').trim() : '';\n  \n  // Check if we got redirected to homepage\n  if (html.includes('Christian Books, Bibles, Gifts & more')) {\n    pageStatus = 'HOMEPAGE_REDIRECT';\n    description = 'ERROR: Bot detection - redirected to homepage';\n  } else {\n    pageStatus = 'PRODUCT_PAGE';\n    \n    // Try multiple methods to find the description\n    \n    // Method 1: Look for the description paragraph class\n    let match = html.match(/<div[^>]*class=\"[^\"]*CBD-ProductDetail-Description-Paragraph[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>/);\n    \n    // Method 2: Look for product description meta tag\n    if (!match || !match[1]) {\n      match = html.match(/<meta\\s+name=\"description\"\\s+content=\"([^\"]*)\"/);\n    }\n    \n    // Method 3: Look for any element with product description\n    if (!match || !match[1]) {\n      match = html.match(/<div[^>]*class=\"[^\"]*product-description[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>/);\n    }\n    \n    if (match && match[1]) {\n      description = match[1]\n        .replace(/<[^>]*>/g, '') // Remove HTML tags\n        .replace(/&nbsp;/g, ' ')\n        .replace(/&amp;/g, '&')\n        .replace(/&lt;/g, '<')\n        .replace(/&gt;/g, '>')\n        .replace(/&quot;/g, '\"')\n        .replace(/&#39;/g, \"'\")\n        .replace(/\\s+/g, ' ') // Normalize whitespace\n        .trim();\n    } else {\n      description = 'Description not found on product page';\n    }\n  }\n  \n  results.push({\n    json: {\n      SKU: item.json.SKU,\n      'Promo Net Sales': item.json['Promo Net Sales'],\n      'Item Description': item.json['Item Description'],\n      productTitle: productTitle,\n      description: description,\n      pageStatus: pageStatus,\n      // Keep all original fields\n      ...item.json\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -16
+      ],
+      "id": "b45d8470-c724-4180-8a23-cc9890ebd7dc",
+      "name": "Extract Product Description"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Wait (Anti-Bot Delay)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait (Anti-Bot Delay)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Enhanced",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Enhanced": {
+      "main": [
+        [
+          {
+            "node": "Extract Product Description",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f3fc82b8-745e-4039-8516-b01ecdd28178",
+  "meta": {
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "cVEl5zcgwfxvpfTq",
+  "tags": []
+}

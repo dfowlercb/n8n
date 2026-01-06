@@ -1,0 +1,727 @@
+{
+  "name": "EnrichProducts",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst items = $input.all()\nconst skuString = items[0].json.batch.map(item => item.SKU.trim())\n\nreturn [{skus: skuString.toString() }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1728,
+        -448
+      ],
+      "id": "9ed1105d-972a-4055-b0c9-bf02e9fa99df",
+      "name": "Build Product Sku Search"
+    },
+    {
+      "parameters": {
+        "url": "=https://apistaging.christianbook.com/api/v1/search/product/info?skus={{ $json.skus }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Cookie\": \"reader_device_token=11111; reader_session_token=1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1472,
+        -416
+      ],
+      "id": "306f0960-ab3a-43ed-b64a-13a28d178ee0",
+      "name": "Fetch Product Info From API"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1904,
+        -848
+      ],
+      "id": "748a3f5c-ef51-46d7-b7dd-74de21da50c8",
+      "name": "Loop Over Sku Batches"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfunction getNestedValue (obj, path) {\n  return path.split('.').reduce((acc, key) => {\n    return acc && acc[key] !== undefined ? acc[key] : undefined;\n  }, obj);\n}\n\nconst batchedData = $('Loop Over Sku Batches').first().json.batch;\nconst allRecords = [];\nfor (const { json } of $input.all()) {\n  for (const record of json.records) {\n    const allBatchedData = batchedData.filter(batchRecord => batchRecord.SKU === record._id)\n    const source = record._source;\n\n    // Main Onix Description if available otherwise Typeset\n    let mainDesc = source.typeset;    \n    const hasMainDescription = source.onix?.data.filter(onixData => onixData.normalized_type === 'main_description');\n    if (hasMainDescription.length > 0) {\n      mainDesc = hasMainDescription[0].pub_desc;\n    }\n    \n    // Short Description\n    let shortDesc = '';\n    const hasShortDescription = source.onix?.data.filter(onixData => onixData.normalized_type === 'short_description');\n    if (hasShortDescription.length > 0) {\n      shortDesc = hasShortDescription[0].pub_desc;\n    }\n\n    // Categories\n    const cat_level_0 = (source.category_levels && source.category_levels !== null) ? source.category_levels[0] :'';\n    const cat_level_1 = (source.category_levels && source.category_levels !== null) ? source.category_levels[1] :'';\n\n    // Variants\n    // Also in \"Enrich AAI Product Data\"\n    const variantConfigs = [\n      { path: ['variants', 'colors'], type: 'color', skuKey: 'sku', nameKey: 'aai_color' },\n      { path: ['variants', 'general', 'binding'], type: 'binding', skuKey: 'item_no', nameKey: 'variant_name' },\n      { path: ['variants', 'size', 'sizes'], type: 'size', skuKey: 'item_no', nameKey: 'size_name' },\n      { path: ['variants', 'communion_cup', 'quantity'], type: 'quantity', skuKey: 'item_no', nameKey: 'variant_name' },\n      { path: ['variants', 'general', 'mediatype'], type: 'media_type', skuKey: 'item_no', nameKey: 'variant_name' }\n    ];\n  \n    const aai = variantConfigs.flatMap(({ path, type, skuKey, nameKey }) => {\n      const value = path.reduce((obj, key) => obj?.[key], source);\n      return Array.isArray(value) \n        ? value.map(item => ({ type, sku: item[skuKey], name: item[nameKey] }))\n        : [];\n    });\n\n    const specialFeatures = [];\n    const majorProdCat = {\n      'BIBLES': {\n        \"fields\" : [\n          { elFieldName: 'ribbon_marker', metadataFieldName: 'ribbon_marker' },\n          { elFieldName: 'page_edges', metadataFieldName: 'page_edges' },\n          { elFieldName: 'bible_text_size', metadataFieldName: 'bible_text_size' },\n          { elFieldName: 'bible_note_size', metadataFieldName: 'bible_note_size'},\n          { elFieldName: 'bible_spine', metadataFieldName: 'bible_spine'},\n          { elFieldName: 'bible_tabs', metadataFieldName: 'bible_tabs'},\n          { elFieldName: 'thumb_index', metadataFieldName: 'thumb_index'},\n          { elFieldName: 'filters.Text Layout', metadataFieldName: 'TextLayout' },\n          { elFieldName: 'filters.Text Color', metadataFieldName: 'TextColor' },\n          { elFieldName: 'filters.Binding', metadataFieldName: 'Binding' },\n          { elFieldName: 'filters.Translation', metadataFieldName: 'BibleTranslation' },\n          {\n            elFieldName: 'category_names',\n            metadataFieldName: 'ExtraCategories',\n            callback: (data) => {\n              if (!Array.isArray(data)) {\n                return data;\n              }\n              const includesAttributes = ['Life Application', 'Scofield', 'Ryrie', 'Journaling Bibles', 'Devotionals', 'Thompson Chain', 'Gift & Award', 'Pew Bible'];\n              return data.filter(text => includesAttributes.includes(text));\n            }\n          },\n          {\n            elFieldName: 'filters.Helps & Features',\n            metadataFieldName: 'GeneralHelpFeatures',\n            callback: (data) => {\n              if (!Array.isArray(data)) {\n                return data;\n              }\n              return data.filter(text => !['Other Helps', 'Two or More Ribbon Markers'].includes(text));\n            }\n          },\n          { elFieldName: 'filters.Language', metadataFieldName: 'Language' },\n          { elFieldName: 'filters.Personalization', metadataFieldName: 'Personalization' },\n          { elFieldName: 'filters.Audience', metadataFieldName: 'Audience' },\n          { elFieldName: 'vendor_name',\n           metadataFieldName: 'publisher',\n           callback: (data) =>  {\n             return `From ${data}`\n           }\n          }\n        ]\n      }\n    }\n    if (source.major_prod_cat in majorProdCat) {\n      for (const field of majorProdCat[source.major_prod_cat].fields) {\n        let result = getNestedValue(source, field.elFieldName);\n        if ('callback' in field) {\n          result = field.callback(result);\n        }\n        if (typeof result !== undefined && result) {\n          if (Array.isArray(result) && result.length === 0) {\n            continue;\n          }\n\n          specialFeatures.push({\n            name: field.metadataFieldName,\n            value: typeof result === 'boolean' ? (result ? 'true' : 'false') : result || ' '\n          });\n        }      \n      }\n    }\n    \n\n    let hasFreePostage = false;\n    if ([\"3\",\"4\",\"5\"].includes(source.flag_options.free_postage_flag)) {\n      hasFreePostage = true;\n    }\n  \n    const obj = {\n      SKU: record._id,\n      product_desc: source.product_desc,\n      author_names: source.full_auth_name,\n      series: source.series,\n      retail: source['Retail Price'],\n      price: source['CBD Price'],\n      main_description: mainDesc,\n      short_description: shortDesc,\n      major_prod_cat: source.major_prod_cat,\n      category_levels_0: cat_level_0,\n      category_levels_1: cat_level_1,\n      google_product_category: source?.google_data?.google_product_category,\n      cbd_savings: source.cbd_savings,\n      cbd_savings_perc: source.cbd_savings_percent\n      ,initialData: allBatchedData.length > 0 ? allBatchedData[0].data : {}\n      ,aai\n      ,special_features: specialFeatures\n      ,has_free_postage: hasFreePostage\n      ,published_date: source.published_date\n      ,street_date: source.street_date\n      ,cbd_exclusive_flag: source.flags.cbd_exclusive_flag\n    };\n    allRecords.push(obj)\n  }\n}\n\n return allRecords;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1248,
+        -416
+      ],
+      "id": "0958009c-5a53-4395-be5e-fa2d4f0f9455",
+      "name": "Extract Required Sku Data"
+    },
+    {
+      "parameters": {
+        "url": "=https://apistaging.christianbook.com/api/v1/search/product?displayTree=false&size=10&customizationsEnabled=false&curationsEnabled=false&page=1&displayResult=true&searchField=series&f=ebook_flag||false&f=damaged_flag||false&f=download_flag||false&searchTerm={{ $json.series }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Cookie\": \"reader_device_token=11111; reader_session_token=1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -528,
+        320
+      ],
+      "id": "d39ced6b-e8de-4920-bfcb-6e7bc918b286",
+      "name": "Fetch Product Series"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3623cddb-89f0-444f-9455-903196a3d762",
+              "leftValue": "={{ $json.series }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c9c102a4-83be-47f8-9281-dbec84de4079",
+              "leftValue": "={{ $json.series }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -128,
+        352
+      ],
+      "id": "32774da1-75a5-4613-96d8-98de10257eb8",
+      "name": "If Product Series Exists"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3623cddb-89f0-444f-9455-903196a3d762",
+              "leftValue": "={{ $json.author_names }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "0bad97be-9baa-4e99-94a4-bb35fa90a791",
+              "leftValue": "={{ $json.author_names }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -688,
+        -48
+      ],
+      "id": "768541e4-4e40-4649-b8aa-c9bf40c016ae",
+      "name": "If has Authors"
+    },
+    {
+      "parameters": {
+        "url": "=https://apistaging.christianbook.com/api/v1/search/product?displayTree=false&size=10&customizationsEnabled=false&curationsEnabled=false&page=1&displayResult=true&f=ebook_flag||false&f=damaged_flag||false&f=download_flag||false&searchField=Author/Artist&searchTerm={{ $json.author_names }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Cookie\": \"reader_device_token=11111; reader_session_token=1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -496,
+        -304
+      ],
+      "id": "08a83200-3291-47e5-8c4d-e6fbf4a6ae6f",
+      "name": "Fetch Products by this Author"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst result = $input.all();\nconst final = $('Enrich Each product').first().json\n\nfinal.seriesSkus = [];\nconst type = 'seriesSkus';\nfor (const product of result[0].json.records)  {\n  const source = product._source;\n\n  if (source.flags.download_flag || source.flags.ebook_flag || source.flags.damaged_flag) {\n    continue;\n  }\n  let hasFreePostage = false;\n  if ([\"3\",\"4\",\"5\"].includes(source.flag_options.free_postage_flag)) {\n    hasFreePostage = true;\n  }\n  final[type].push({\n    sku: source.item_no\n    ,aaiLabel: source.aailabel\n    ,name: source.product_desc\n    ,retail: source['Retail Price']\n    ,price: source['CBD Price']\n    ,has_free_postage: hasFreePostage\n    ,published_date: source.published_date\n    ,street_date: source.street_date\n    ,cbd_exclusive_flag: source.flags.cbd_exclusive_flag\n  })\n}\nreturn final;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -976,
+        320
+      ],
+      "id": "3ad15035-33cc-41d3-bb7c-510013aa01ac",
+      "name": "Add Series Skus to record"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst result = $input.all();\nconst final = $('If has Authors').first().json\n\nfinal.authorSkus = [];\nconst type = 'authorSkus';\nfor (const product of result[0].json.records)  {\n  const source = product._source;\n\n  if (source.flags.download_flag || source.flags.ebook_flag || source.flags.damaged_flag) {\n    continue;\n  }\n  let hasFreePostage = false;\n  if ([\"3\",\"4\",\"5\"].includes(source.flag_options.free_postage_flag)) {\n    hasFreePostage = true;\n  }\n  final[type].push({\n    sku: source.item_no\n    ,name: source.product_desc\n    ,retail: source['Retail Price']\n    ,price: source['CBD Price']\n    ,has_free_postage: hasFreePostage\n    ,published_date: source.published_date\n    ,street_date: source.street_date\n    ,cbd_exclusive_flag: source.flags.cbd_exclusive_flag\n  })\n}\nreturn final;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        16
+      ],
+      "id": "614114f9-0299-4e82-8c79-22f91fcd217a",
+      "name": "Add Author Data Skus to record"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -944,
+        -208
+      ],
+      "id": "ef4c9ece-e3f6-4fc8-a0a8-d08453a16f3a",
+      "name": "Enrich Each product"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "SKU",
+        "joinMode": "keepEverything",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1648,
+        0
+      ],
+      "id": "992fdc86-2efc-47d9-a678-6f54512fca62",
+      "name": "Merge Series and Author Enrichment"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -2560,
+        -48
+      ],
+      "id": "7eb842fd-cf7f-49f7-add7-e54923fef056",
+      "name": "Loop Over Products"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cfa9ba85-7e27-4b38-a501-d600b5f6d1ac",
+              "leftValue": "={{ $json.SKU }}",
+              "rightValue": "DA25178-CP",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -1856,
+        -224
+      ],
+      "id": "0fa4be90-d0a0-4fb3-897e-4c524cbf803f",
+      "name": "Filter",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "url": "=https://apistaging.christianbook.com/api/v1/search/product/info?skus={{ $json.skus }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Cookie\": \"reader_device_token=11111; reader_session_token=1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -2144,
+        192
+      ],
+      "id": "6945b268-c328-4324-b54f-0a78a4a14df7",
+      "name": "Fetch Product Info From AAI"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9c5f2f9f-c26e-4880-9593-6a440f075927",
+              "leftValue": "={{ $json.aai }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "array",
+                "operation": "lengthGt",
+                "rightType": "number"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2544,
+        176
+      ],
+      "id": "fef78b2d-c926-4590-a4d2-4f6b8867dbe3",
+      "name": "If has AAI Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\n// Split incoming items into chunks of 100\nconst batches = [];\nfor (const item of $input.first().json.aai) {\n    batches.push(item.sku);\n}\n\nreturn { skus: batches.toString() };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2352,
+        192
+      ],
+      "id": "e5350c60-ba5c-4f39-94cc-6e7f43203b77",
+      "name": "Build AAI Sku Batch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst result = $input.all();\nconst final = $('If has AAI Data').first().json\nconst originalAAI = [...final.aai]\nfinal.aai = [];\nconst type = 'aai';\nconst variantConfigs = [\n  'color',\n  'binding',\n  'size',\n  'quantity',\n  'media_type'\n];\n\nfor (const product of result[0].json.records)  {\n  const source = product._source;\n\n  if (source.flags.download_flag || source.flags.ebook_flag || source.flags.damaged_flag) {\n    continue;\n  }\n\n  const originalAAIData = originalAAI.filter(record => record.sku === source.item_no)\n  \n  const aaiName = originalAAIData\n    .slice() // defensive copy\n    .sort((a, b) => variantConfigs.indexOf(a.type) - variantConfigs.indexOf(b.type))\n    .map(v => v.name)\n    .join(' / ');\n\n  \n  let hasFreePostage = false;\n  if ([\"3\",\"4\",\"5\"].includes(source.flag_options.free_postage_flag)) {\n    hasFreePostage = true;\n  }\n  final[type].push({\n    sku: source.item_no\n    ,aaiName\n    ,aaiLabel: source.aailabel\n    ,name: source.product_desc\n    ,retail: source['Retail Price']\n    ,price: source['CBD Price']\n    ,has_free_postage: hasFreePostage\n    ,published_date: source.published_date\n    ,street_date: source.street_date\n    ,cbd_exclusive_flag: source.flags.cbd_exclusive_flag\n  })\n}\nreturn final;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1936,
+        192
+      ],
+      "id": "3b2eed11-b918-4a13-bc68-42c27c621b14",
+      "name": "Enrich AAI Product Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2288,
+        -816
+      ],
+      "id": "6d98c2b1-fa68-45bb-a881-9b97fcf139d1",
+      "name": "Stage Data into Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        -848
+      ],
+      "id": "f411d203-bcdd-46cc-bdee-59f0682ab7da",
+      "name": "Completed Subworkflow"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "229a2761-583a-41fa-a5b5-e412ab67ebe0",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -2960,
+        -768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// return [\n//   {\n//     \"batch\": [\n//       {\n//         \"SKU\": \"5253235\",\n//         \"data\": []\n//       },\n//       {\n//         \"SKU\": \"5273028\",\n//         \"data\": []\n//       },\n//       {\n//         \"SKU\": \"22303X\",\n//         \"data\": []\n//       }\n//     ]\n//   }\n// ]\n\nreturn [\n  {\n    \"batch\": [\n      {\n        \"SKU\": \"5253235\",\n        \"data\": []\n      },\n      {\n        \"SKU\": \"121456\",\n        \"data\": \"[]\"\n      },\n      {\n        \"SKU\": \"122423\",\n        \"data\": \"[]\"\n      },\n      {\n        \"SKU\": \"326526\",\n        \"data\": \"[]\"\n      },\n      {\n        \"SKU\": \"0130142\",\n        \"data\": \"[]\"\n      },\n      {\n        \"SKU\": \"DA25178-CP\",\n        \"data\": \"[]\"\n      },\n      {\n        \"SKU\": \"066053\",\n        \"data\": \"[]\"\n      },\n      {\n        \"SKU\": \"030749\",\n        \"data\": \"[]\"\n      },\n      {\n        \"SKU\": \"0037921\",\n        \"data\": \"[{\\\"SKU\\\":\\\"0037921\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":501,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":194,\\\"Promo_Lift_Sales\\\":501,\\\"id\\\":172,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.409Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:05.994Z\\\",\\\"original_index\\\":1,\\\"clean_sales\\\":501,\\\"clean_margin\\\":0,\\\"clean_profit\\\":194,\\\"clean_lift\\\":501,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":693.75,\\\"score_components\\\":{\\\"sales\\\":501,\\\"margin\\\":0,\\\"profit\\\":194,\\\"lift\\\":501},\\\"catalog_page\\\":1,\\\"page_position\\\":1,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":1}]\"\n      },\n      {\n        \"SKU\": \"006522\",\n        \"data\": \"[{\\\"SKU\\\":\\\"006522\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":450,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":200,\\\"Promo_Lift_Sales\\\":433,\\\"id\\\":216,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.457Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:08.298Z\\\",\\\"original_index\\\":45,\\\"clean_sales\\\":450,\\\"clean_margin\\\":0,\\\"clean_profit\\\":200,\\\"clean_lift\\\":433,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":635.8217054263566,\\\"score_components\\\":{\\\"sales\\\":450,\\\"margin\\\":0,\\\"profit\\\":200,\\\"lift\\\":433},\\\"catalog_page\\\":1,\\\"page_position\\\":2,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":2}]\"\n      },\n      {\n        \"SKU\": \"005049\",\n        \"data\": \"[{\\\"SKU\\\":\\\"005049\\\",\\\"OFFICERS_CATEGORY\\\":\\\"VIDEOS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":183,\\\"Promo_Margin_Perc\\\":1,\\\"Promo_Profit\\\":137,\\\"Promo_Lift_Sales\\\":157,\\\"id\\\":186,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.424Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.717Z\\\",\\\"original_index\\\":15,\\\"clean_sales\\\":183,\\\"clean_margin\\\":1,\\\"clean_profit\\\":137,\\\"clean_lift\\\":157,\\\"clean_category\\\":\\\"VIDEOS\\\",\\\"catalog_score\\\":549.7083333333334,\\\"score_components\\\":{\\\"sales\\\":183,\\\"margin\\\":1,\\\"profit\\\":137,\\\"lift\\\":157},\\\"catalog_page\\\":1,\\\"page_position\\\":3,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":3}]\"\n      },\n      {\n        \"SKU\": \"003698\",\n        \"data\": \"[{\\\"SKU\\\":\\\"003698\\\",\\\"OFFICERS_CATEGORY\\\":\\\"VIDEOS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":395,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":121,\\\"Promo_Lift_Sales\\\":394,\\\"id\\\":171,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.408Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:05.944Z\\\",\\\"original_index\\\":0,\\\"clean_sales\\\":395,\\\"clean_margin\\\":0,\\\"clean_profit\\\":121,\\\"clean_lift\\\":394,\\\"clean_category\\\":\\\"VIDEOS\\\",\\\"catalog_score\\\":490.97189922480624,\\\"score_components\\\":{\\\"sales\\\":395,\\\"margin\\\":0,\\\"profit\\\":121,\\\"lift\\\":394},\\\"catalog_page\\\":1,\\\"page_position\\\":4,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":4}]\"\n      },\n      {\n        \"SKU\": \"006752\",\n        \"data\": \"[{\\\"SKU\\\":\\\"006752\\\",\\\"OFFICERS_CATEGORY\\\":\\\"GIFTS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":332,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":100,\\\"Promo_Lift_Sales\\\":266,\\\"id\\\":219,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.461Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:08.503Z\\\",\\\"original_index\\\":48,\\\"clean_sales\\\":332,\\\"clean_margin\\\":0,\\\"clean_profit\\\":100,\\\"clean_lift\\\":266,\\\"clean_category\\\":\\\"GIFTS\\\",\\\"catalog_score\\\":381.29069767441865,\\\"score_components\\\":{\\\"sales\\\":332,\\\"margin\\\":0,\\\"profit\\\":100,\\\"lift\\\":266},\\\"catalog_page\\\":1,\\\"page_position\\\":5,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":5}]\"\n      },\n      {\n        \"SKU\": \"006358\",\n        \"data\": \"[{\\\"SKU\\\":\\\"006358\\\",\\\"OFFICERS_CATEGORY\\\":\\\"GIFTS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":249,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":114,\\\"Promo_Lift_Sales\\\":171,\\\"id\\\":213,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.454Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:08.148Z\\\",\\\"original_index\\\":42,\\\"clean_sales\\\":249,\\\"clean_margin\\\":0,\\\"clean_profit\\\":114,\\\"clean_lift\\\":171,\\\"clean_category\\\":\\\"GIFTS\\\",\\\"catalog_score\\\":294.46317829457365,\\\"score_components\\\":{\\\"sales\\\":249,\\\"margin\\\":0,\\\"profit\\\":114,\\\"lift\\\":171},\\\"catalog_page\\\":1,\\\"page_position\\\":6,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":6}]\"\n      },\n      {\n        \"SKU\": \"004069\",\n        \"data\": \"[{\\\"SKU\\\":\\\"004069\\\",\\\"OFFICERS_CATEGORY\\\":\\\"GIFTS\\\",\\\"SALE_NAME\\\":\\\"RED TAG SALE\\\",\\\"Sale_Code\\\":\\\"386\\\",\\\"Promo_Net_Sales\\\":303,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":73,\\\"Promo_Lift_Sales\\\":-15,\\\"id\\\":174,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.411Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.098Z\\\",\\\"original_index\\\":3,\\\"clean_sales\\\":303,\\\"clean_margin\\\":0,\\\"clean_profit\\\":73,\\\"clean_lift\\\":-15,\\\"clean_category\\\":\\\"GIFTS\\\",\\\"catalog_score\\\":269.7083333333333,\\\"score_components\\\":{\\\"sales\\\":303,\\\"margin\\\":0,\\\"profit\\\":73,\\\"lift\\\":-15},\\\"catalog_page\\\":1,\\\"page_position\\\":7,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":7}]\"\n      },\n      {\n        \"SKU\": \"00638\",\n        \"data\": \"[{\\\"SKU\\\":\\\"00638\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":194,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":86,\\\"Promo_Lift_Sales\\\":142,\\\"id\\\":214,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.455Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:08.198Z\\\",\\\"original_index\\\":43,\\\"clean_sales\\\":194,\\\"clean_margin\\\":0,\\\"clean_profit\\\":86,\\\"clean_lift\\\":142,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":204.6763565891473,\\\"score_components\\\":{\\\"sales\\\":194,\\\"margin\\\":0,\\\"profit\\\":86,\\\"lift\\\":142},\\\"catalog_page\\\":1,\\\"page_position\\\":8,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":8}]\"\n      },\n      {\n        \"SKU\": \"005783\",\n        \"data\": \"[{\\\"SKU\\\":\\\"005783\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":\\\"RED TAG SALE\\\",\\\"Sale_Code\\\":\\\"386\\\",\\\"Promo_Net_Sales\\\":183,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":18,\\\"Promo_Lift_Sales\\\":175,\\\"id\\\":202,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.442Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:07.558Z\\\",\\\"original_index\\\":31,\\\"clean_sales\\\":183,\\\"clean_margin\\\":0,\\\"clean_profit\\\":18,\\\"clean_lift\\\":175,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":129.2383720930233,\\\"score_components\\\":{\\\"sales\\\":183,\\\"margin\\\":0,\\\"profit\\\":18,\\\"lift\\\":175},\\\"catalog_page\\\":1,\\\"page_position\\\":9,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":9}]\"\n      },\n      {\n        \"SKU\": \"006653\",\n        \"data\": \"[{\\\"SKU\\\":\\\"006653\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":135,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":55,\\\"Promo_Lift_Sales\\\":130,\\\"id\\\":217,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.459Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:08.404Z\\\",\\\"original_index\\\":46,\\\"clean_sales\\\":135,\\\"clean_margin\\\":0,\\\"clean_profit\\\":55,\\\"clean_lift\\\":130,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":111.05910852713177,\\\"score_components\\\":{\\\"sales\\\":135,\\\"margin\\\":0,\\\"profit\\\":55,\\\"lift\\\":130},\\\"catalog_page\\\":1,\\\"page_position\\\":10,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 1 - Bestsellers\\\",\\\"catalog_sequence\\\":10}]\"\n      },\n      {\n        \"SKU\": \"004433\",\n        \"data\": \"[{\\\"SKU\\\":\\\"004433\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":128,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":57,\\\"Promo_Lift_Sales\\\":126,\\\"id\\\":182,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.420Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.500Z\\\",\\\"original_index\\\":11,\\\"clean_sales\\\":128,\\\"clean_margin\\\":0,\\\"clean_profit\\\":57,\\\"clean_lift\\\":126,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":105.36724806201552,\\\"score_components\\\":{\\\"sales\\\":128,\\\"margin\\\":0,\\\"profit\\\":57,\\\"lift\\\":126},\\\"catalog_page\\\":2,\\\"page_position\\\":1,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":11}]\"\n      },\n      {\n        \"SKU\": \"005142\",\n        \"data\": \"[{\\\"SKU\\\":\\\"005142\\\",\\\"OFFICERS_CATEGORY\\\":\\\"GIFTS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":143,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":43,\\\"Promo_Lift_Sales\\\":112,\\\"id\\\":187,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.425Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.769Z\\\",\\\"original_index\\\":16,\\\"clean_sales\\\":143,\\\"clean_margin\\\":0,\\\"clean_profit\\\":43,\\\"clean_lift\\\":112,\\\"clean_category\\\":\\\"GIFTS\\\",\\\"catalog_score\\\":103.07073643410854,\\\"score_components\\\":{\\\"sales\\\":143,\\\"margin\\\":0,\\\"profit\\\":43,\\\"lift\\\":112},\\\"catalog_page\\\":2,\\\"page_position\\\":2,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":12}]\"\n      },\n      {\n        \"SKU\": \"003863\",\n        \"data\": \"[{\\\"SKU\\\":\\\"003863\\\",\\\"OFFICERS_CATEGORY\\\":\\\"GIFTS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":139,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":42,\\\"Promo_Lift_Sales\\\":98,\\\"id\\\":173,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.410Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.047Z\\\",\\\"original_index\\\":2,\\\"clean_sales\\\":139,\\\"clean_margin\\\":0,\\\"clean_profit\\\":42,\\\"clean_lift\\\":98,\\\"clean_category\\\":\\\"GIFTS\\\",\\\"catalog_score\\\":95.31589147286823,\\\"score_components\\\":{\\\"sales\\\":139,\\\"margin\\\":0,\\\"profit\\\":42,\\\"lift\\\":98},\\\"catalog_page\\\":2,\\\"page_position\\\":3,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":13}]\"\n      },\n      {\n        \"SKU\": \"006190\",\n        \"data\": \"[{\\\"SKU\\\":\\\"006190\\\",\\\"OFFICERS_CATEGORY\\\":\\\"GIFTS\\\",\\\"SALE_NAME\\\":\\\"CHS SL #1\\\",\\\"Sale_Code\\\":\\\"124\\\",\\\"Promo_Net_Sales\\\":136,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":30,\\\"Promo_Lift_Sales\\\":133,\\\"id\\\":203,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.443Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:08.099Z\\\",\\\"original_index\\\":32,\\\"clean_sales\\\":136,\\\"clean_margin\\\":0,\\\"clean_profit\\\":30,\\\"clean_lift\\\":133,\\\"clean_category\\\":\\\"GIFTS\\\",\\\"catalog_score\\\":86.59883720930232,\\\"score_components\\\":{\\\"sales\\\":136,\\\"margin\\\":0,\\\"profit\\\":30,\\\"lift\\\":133},\\\"catalog_page\\\":2,\\\"page_position\\\":4,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":14}]\"\n      },\n      {\n        \"SKU\": \"005630\",\n        \"data\": \"[{\\\"SKU\\\":\\\"005630\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":\\\"CHS SL #4\\\",\\\"Sale_Code\\\":\\\"49\\\",\\\"Promo_Net_Sales\\\":130,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":44,\\\"Promo_Lift_Sales\\\":82,\\\"id\\\":193,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.432Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:07.505Z\\\",\\\"original_index\\\":22,\\\"clean_sales\\\":130,\\\"clean_margin\\\":0,\\\"clean_profit\\\":44,\\\"clean_lift\\\":82,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":85.2984496124031,\\\"score_components\\\":{\\\"sales\\\":130,\\\"margin\\\":0,\\\"profit\\\":44,\\\"lift\\\":82},\\\"catalog_page\\\":2,\\\"page_position\\\":5,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":15}]\"\n      },\n      {\n        \"SKU\": \"00646\",\n        \"data\": \"[{\\\"SKU\\\":\\\"00646\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BIBLES\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":132,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":26,\\\"Promo_Lift_Sales\\\":122,\\\"id\\\":215,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.456Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:08.247Z\\\",\\\"original_index\\\":44,\\\"clean_sales\\\":132,\\\"clean_margin\\\":0,\\\"clean_profit\\\":26,\\\"clean_lift\\\":122,\\\"clean_category\\\":\\\"BIBLES\\\",\\\"catalog_score\\\":76.30038759689924,\\\"score_components\\\":{\\\"sales\\\":132,\\\"margin\\\":0,\\\"profit\\\":26,\\\"lift\\\":122},\\\"catalog_page\\\":2,\\\"page_position\\\":6,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":16}]\"\n      },\n      {\n        \"SKU\": \"004855\",\n        \"data\": \"[{\\\"SKU\\\":\\\"004855\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":122,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":37,\\\"Promo_Lift_Sales\\\":97,\\\"id\\\":183,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.421Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.559Z\\\",\\\"original_index\\\":12,\\\"clean_sales\\\":122,\\\"clean_margin\\\":0,\\\"clean_profit\\\":37,\\\"clean_lift\\\":97,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":72.91375968992247,\\\"score_components\\\":{\\\"sales\\\":122,\\\"margin\\\":0,\\\"profit\\\":37,\\\"lift\\\":97},\\\"catalog_page\\\":2,\\\"page_position\\\":7,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":17}]\"\n      },\n      {\n        \"SKU\": \"004994\",\n        \"data\": \"[{\\\"SKU\\\":\\\"004994\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":107,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":42,\\\"Promo_Lift_Sales\\\":107,\\\"id\\\":185,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.423Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.665Z\\\",\\\"original_index\\\":14,\\\"clean_sales\\\":107,\\\"clean_margin\\\":0,\\\"clean_profit\\\":42,\\\"clean_lift\\\":107,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":65.06007751937985,\\\"score_components\\\":{\\\"sales\\\":107,\\\"margin\\\":0,\\\"profit\\\":42,\\\"lift\\\":107},\\\"catalog_page\\\":2,\\\"page_position\\\":8,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":18}]\"\n      },\n      {\n        \"SKU\": \"0043601\",\n        \"data\": \"[{\\\"SKU\\\":\\\"0043601\\\",\\\"OFFICERS_CATEGORY\\\":\\\"GIFTS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":118,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":24,\\\"Promo_Lift_Sales\\\":118,\\\"id\\\":175,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.412Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.451Z\\\",\\\"original_index\\\":4,\\\"clean_sales\\\":118,\\\"clean_margin\\\":0,\\\"clean_profit\\\":24,\\\"clean_lift\\\":118,\\\"clean_category\\\":\\\"GIFTS\\\",\\\"catalog_score\\\":59.44186046511628,\\\"score_components\\\":{\\\"sales\\\":118,\\\"margin\\\":0,\\\"profit\\\":24,\\\"lift\\\":118},\\\"catalog_page\\\":2,\\\"page_position\\\":9,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":19}]\"\n      },\n      {\n        \"SKU\": \"00557\",\n        \"data\": \"[{\\\"SKU\\\":\\\"00557\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":null,\\\"Sale_Code\\\":null,\\\"Promo_Net_Sales\\\":109,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":35,\\\"Promo_Lift_Sales\\\":60,\\\"id\\\":192,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.431Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:07.033Z\\\",\\\"original_index\\\":21,\\\"clean_sales\\\":109,\\\"clean_margin\\\":0,\\\"clean_profit\\\":35,\\\"clean_lift\\\":60,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":50.65988372093023,\\\"score_components\\\":{\\\"sales\\\":109,\\\"margin\\\":0,\\\"profit\\\":35,\\\"lift\\\":60},\\\"catalog_page\\\":2,\\\"page_position\\\":10,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 2 - Bestsellers\\\",\\\"catalog_sequence\\\":20}]\"\n      },\n      {\n        \"SKU\": \"005527\",\n        \"data\": \"[{\\\"SKU\\\":\\\"005527\\\",\\\"OFFICERS_CATEGORY\\\":\\\"BOOKS\\\",\\\"SALE_NAME\\\":\\\"CHS SL #5\\\",\\\"Sale_Code\\\":\\\"43\\\",\\\"Promo_Net_Sales\\\":118,\\\"Promo_Margin_Perc\\\":0,\\\"Promo_Profit\\\":12,\\\"Promo_Lift_Sales\\\":87,\\\"id\\\":188,\\\"createdAt\\\":\\\"2025-12-05T13:09:19.426Z\\\",\\\"updatedAt\\\":\\\"2025-12-08T18:27:06.982Z\\\",\\\"original_index\\\":17,\\\"clean_sales\\\":118,\\\"clean_margin\\\":0,\\\"clean_profit\\\":12,\\\"clean_lift\\\":87,\\\"clean_category\\\":\\\"BOOKS\\\",\\\"catalog_score\\\":40.93410852713178,\\\"score_components\\\":{\\\"sales\\\":118,\\\"margin\\\":0,\\\"profit\\\":12,\\\"lift\\\":87},\\\"catalog_page\\\":3,\\\"page_position\\\":1,\\\"layout_section\\\":\\\"BESTSELLERS\\\",\\\"page_label\\\":\\\"Page 3 - Bestsellers\\\",\\\"catalog_sequence\\\":21}]\"\n      }\n    ]\n  }\n]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2688,
+        -784
+      ],
+      "id": "279162f4-e551-49d9-9f14-de10f796546d",
+      "name": "Test Data",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst majorProdCat = {\n  'BIBLES': {\n    \"priority\" : [\"bible_text_size\", \"TextLayout\", \"GeneralHelpFeatures\", \"publisher\"]\n  }\n}\nfor (const { json } of $input.all()) {\n  let specialFeaturesText = null;\n  if (json.major_prod_cat in majorProdCat && json.special_features.length > 0) {\n    const fieldPriority = majorProdCat[json.major_prod_cat].priority\n    let filteredSpecialFeatures = json.special_features.filter(v => fieldPriority.includes(v.name))\n    specialFeaturesText = filteredSpecialFeatures\n      .slice() // defensive copy\n      .sort((a, b) => fieldPriority.indexOf(a.name) - fieldPriority.indexOf(b.name))\n      .map(v => Array.isArray(v.value) && v.value.length > 0 ? v.value[0] : v.value)\n      .join(' • ');\n  }\n  json.specialFeaturesText = specialFeaturesText\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1008,
+        -448
+      ],
+      "id": "f8e9ea75-72c0-4c09-b820-d09379373d83",
+      "name": "Build SpecialFeaturesText"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Build Product Sku Search": {
+      "main": [
+        [
+          {
+            "node": "Fetch Product Info From API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Product Info From API": {
+      "main": [
+        [
+          {
+            "node": "Extract Required Sku Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Sku Batches": {
+      "main": [
+        [
+          {
+            "node": "Completed Subworkflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Product Sku Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Required Sku Data": {
+      "main": [
+        [
+          {
+            "node": "Build SpecialFeaturesText",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Product Series": {
+      "main": [
+        [
+          {
+            "node": "Add Series Skus to record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Product Series Exists": {
+      "main": [
+        [
+          {
+            "node": "Fetch Product Series",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Series and Author Enrichment",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "If has Authors": {
+      "main": [
+        [
+          {
+            "node": "Fetch Products by this Author",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Product Series Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Products by this Author": {
+      "main": [
+        [
+          {
+            "node": "Add Author Data Skus to record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Series Skus to record": {
+      "main": [
+        [
+          {
+            "node": "Merge Series and Author Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Author Data Skus to record": {
+      "main": [
+        [
+          {
+            "node": "If Product Series Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Each product": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If has Authors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Series and Author Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Enrich Each product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Products": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Sku Batches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If has AAI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Product Info From AAI": {
+      "main": [
+        [
+          {
+            "node": "Enrich AAI Product Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If has AAI Data": {
+      "main": [
+        [
+          {
+            "node": "Build AAI Sku Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AAI Sku Batch": {
+      "main": [
+        [
+          {
+            "node": "Fetch Product Info From AAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich AAI Product Data": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Data into Workflow": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Sku Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Test Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Data": {
+      "main": [
+        [
+          {
+            "node": "Stage Data into Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SpecialFeaturesText": {
+      "main": [
+        [
+          {
+            "node": "Enrich Each product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2ace474e-3766-4d12-80af-75eddc748a3b",
+  "meta": {
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "YwSUjAkSD6xEtgZy",
+  "tags": []
+}

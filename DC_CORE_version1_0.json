@@ -1,0 +1,318 @@
+{
+  "name": "DC_CORE",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb",
+          "mode": "list",
+          "cachedResultName": "dcatalog",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb"
+        },
+        "event": "fileUpdated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -544,
+        0
+      ],
+      "id": "d7f8dc31-ba7c-4582-a33f-dc0ba7d0e542",
+      "name": "Google Drive Trigger",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1ecBj4hiNR-y2M4eJc5sZSr2KOtQCztLO",
+          "mode": "list",
+          "cachedResultName": "CATALOG_GRID_RPT.csv",
+          "cachedResultUrl": "https://drive.google.com/file/d/1ecBj4hiNR-y2M4eJc5sZSr2KOtQCztLO/view?usp=drivesdk"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -352,
+        0
+      ],
+      "id": "29a5a977-e913-4d98-8a03-330cfa34bfe9",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        0
+      ],
+      "id": "2a417262-b736-4a02-8b59-b0d11480dba5",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6917b6b1-321b-457f-a202-b0179b00b7cd",
+              "name": "PAGE_FOLIO_LEFT",
+              "value": "www.christianbook.com",
+              "type": "string"
+            },
+            {
+              "id": "b477a2a2-5687-4483-aef2-d6fbb9c1fbfb",
+              "name": "PAGE_FOLIO_RIGHT",
+              "value": "1-800-CHRISTIAN",
+              "type": "string"
+            },
+            {
+              "id": "9c8632c5-d681-4a57-abc4-18af6e02bf6d",
+              "name": "CATEGORY2",
+              "value": "={{ $json.CATEGORY.split('-')[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "aada8c2e-87cb-4082-8dad-c7598bfe84dc",
+              "name": "SUBCATEGORY",
+              "value": "={{ $json.CATEGORY.split('-')[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "09071f96-0ced-4a36-956a-e6b7e0db97e6",
+              "name": "FREE_SHIP_SKU",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "de520b67-7dee-4580-9a47-aaed1d977193",
+              "name": "SUBTITLE",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "9ea7101b-778d-4fba-8791-73ef831a5623",
+              "name": "SPECIAL_FEATURES",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "f9f3e1de-cdcc-4d57-adba-7a354ddcde82",
+              "name": "IMAGE",
+              "value": "=  https://storage.googleapis.com/dcatalog-image-hosting.firebasestorage.app/novdectestdc/{{ $json.CBD_SKU }}.jpg",
+              "type": "string"
+            },
+            {
+              "id": "64b7d1ca-89b0-4d77-a9a6-edb2a63494f5",
+              "name": "POSTSELL_PRICE",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "51a83e43-d105-4a10-96c8-8c67c211b651",
+              "name": "BULK_BUG",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "bac93ce2-7b58-44dd-ae91-7ba27dc47b1e",
+              "name": "HEX_CATEGORY",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "0b99b90b-1d63-433c-8879-443f68576f35",
+              "name": "HEX_SUBCATEGORY",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "include": "except",
+        "excludeFields": "BUYER, PUB, MEMBER_PRICE, COST, MARGIN, ONHAND, ONORDER, MONTHS_LEFT, LAST12, LAST24, ['60DAY_AVG'], ['180DAY_AVG'], PR_CURR, PR_MEM, PR_WEB_SPEC, PR_START_DT, PR_END_DATE, AMAZON_PRICE, AMAZON_VENDOR, NOV, OCT, SEP, AUG, JUL, JUN, MAY, APR, MAR, PR_MEM_BULK_PRC, ADV_START_DT, DISC_FLAG, FEB, JAN, DEC, RATE, BULK_MEM_PRICE, STATUS_DETAIL, OTHER, CS_MEMPRICE, FUTURE_PRICE, FUTURE_DATE, LOC, PERSON",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        0
+      ],
+      "id": "f266dda6-3590-4ae2-be4a-73b2e6fd4449",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        -16
+      ],
+      "id": "59468a88-4e42-429a-a75c-878c96c04ada",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "name": "dcat template",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb",
+          "mode": "list",
+          "cachedResultName": "dcatalog",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        960,
+        -16
+      ],
+      "id": "556602b7-a7d5-4f8e-b8ce-d90f8d3a34e2",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// This function maps the input data items to new output items\nreturn items.map(item => {\n  const json = item.json;\n\n   return {\n     \"PAGE\": json.PAGE || 0,    \n     \"CATEGORY\": json.CATEGORY2 || '', \n     \"SUBCATEGORY\": json.SUBCATEGORY || '',\n     \"GROUP BY\": json.BUILT_UNDER_SKU || '',\n     \"CBD_SKU\":json.CBD_SKU || '',\n     \"FREE_SHIP_SKU\":json.FREE_SHIP_SKU || '',\n     \"CAT_TITLE\": json.CAT_TITLE || '',\n     \"SUBTITLE\":json.SUBTITLE || '',\n     \"AUTHOR\":json.AUTHOR || '',\n     \"TYPE_COPY\":json.TYPE_COPY || '',\n     \"SPECIAL_FEATURES\":json.SPECIAL_FEATURES || '',\n     \"IMAGE\":json.PHOTO2 || '',\n     \"POSTSELL1\":json.POSTSELL1 || '',\n     \"POSTSELL2\":json.POSTSELL2 || '',\n     \"POSTSELL3\":json.POSTSELL3 || '',\n     \"RETAIL\":json.RETAIL || '',\n     \"FEATURE_PRICE\":json.PRICE || '',\n     \"POSTSELL_PRICE\":json.POSTSELL_PRICE || '',\n     \"PRICE\":json.PRICE || '',\n     \"NEW\":json.NEW || '',\n     \"SAVE_BUG\":json.SAVE || '',\n     \"BULK_BUG\":json.BULK_BUG || '',\n     \"PAGE_FOLIO_LEFT\":json.PAGE_FOLIO_LEFT || '',\n     \"PAGE_FOLIO_RIGHT\":json.PAGE_FOLIO_RIGHT || '',\n     \"RANK\":json.RANK || '',\n     \"NAME\":json.NAME || '',\n     \"MAIL_DATE\":json.MAIL_DATE || '',\n     \"SHIP_DATE\":json.SHIP_DATE || '',\n     \"PUB_DATE\":json.PUB_DATE || '',\n     \"PCLU\":json.PCLU || '',\n     \"COPY2\":json.COPY2 || '',\n     \"PHOTO\":json.PHOTO2 || '',\n     \"HEX_CATEGORY\":json.HEX_CATEGORY || '',\n     \"HEX_SUBCATEGORY\":json.HEX_SUBCATEGORY || ''\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        0
+      ],
+      "id": "51435ff4-8812-4bfd-b133-8455152e1d9c",
+      "name": "Final Mapping and Naming"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Final Mapping and Naming",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Mapping and Naming": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6ef76a63-646a-43c4-9870-e1c7ed72d22f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "lvMI44YUBj5HdIEj",
+  "tags": []
+}

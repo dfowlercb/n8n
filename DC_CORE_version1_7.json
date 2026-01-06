@@ -1,0 +1,796 @@
+{
+  "name": "DC_CORE",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb",
+          "mode": "list",
+          "cachedResultName": "dcatalog",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb"
+        },
+        "event": "fileUpdated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        -320
+      ],
+      "id": "d7f8dc31-ba7c-4582-a33f-dc0ba7d0e542",
+      "name": "Google Drive Trigger",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1dWNe9MX0mOXz_nI0omdVH4tD4tULoJXC",
+          "mode": "list",
+          "cachedResultName": "CATALOG_GRID_RPT.csv",
+          "cachedResultUrl": "https://drive.google.com/file/d/1dWNe9MX0mOXz_nI0omdVH4tD4tULoJXC/view?usp=drivesdk"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -416,
+        -320
+      ],
+      "id": "29a5a977-e913-4d98-8a03-330cfa34bfe9",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        -320
+      ],
+      "id": "2a417262-b736-4a02-8b59-b0d11480dba5",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        656,
+        224
+      ],
+      "id": "59468a88-4e42-429a-a75c-878c96c04ada",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "name": "dcat template",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb",
+          "mode": "list",
+          "cachedResultName": "dcatalog",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        896,
+        224
+      ],
+      "id": "556602b7-a7d5-4f8e-b8ce-d90f8d3a34e2",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// This function maps the input data items to new output items\nreturn items.map(item => {\n  const json = item.json;\n\n   return {\n     \"PAGE\": json.PAGE || 0,    \n     \"CATEGORY\": json.CATEGORY2 || '', \n     \"SUBCATEGORY\": json.SUBCATEGORY || '',\n     \"GROUP_BY\": json.BUILT_UNDER_SKU || '',\n     \"SKU\":json.CBD_SKU || '',\n     \"FREE_SHIP_SKU\":json.FREE_SHIP_SKU || '',\n     \"TITLE\": json.CAT_TITLE || '',\n     \"SUBTITLE\":json.SUBTITLE || '',\n     \"AUTHOR\":json.AUTHOR || '',\n     \"COPY\":json.TYPE_COPY || '',\n     \"SPECIAL_FEATURES\":json.SPECIAL_FEATURES || '',\n     \"IMAGE\":json.PHOTO2 || '',\n     \"POSTSELL1\":json.POSTSELL1 || '',\n     \"POSTSELL2\":json.POSTSELL2 || '',\n     \"POSTSELL3\":json.POSTSELL3 || '',\n     \"RETAIL\":json.RETAIL || '',\n     \"FEATURE_PRICE\":json.PRICE || '',\n     \"POSTSELL_PRICE\":json.POSTSELL_PRICE || '',\n     \"PRICE\":json.PRICE || '',\n     \"NEW\":json.NEW || '',\n     \"SAVE_BUG\":json.SAVE || '',\n     \"BULK_BUG\":json.BULK_BUG || '',\n     \"PAGE_FOLIO_LEFT\":json.PAGE_FOLIO_LEFT || '',\n     \"PAGE_FOLIO_RIGHT\":json.PAGE_FOLIO_RIGHT || '',\n     \"HEX_CATEGORY\":json.HEX_CATEGORY || '',\n     \"HEX_SUBCATEGORY\":json.HEX_SUBCATEGORY || ''\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        224
+      ],
+      "id": "51435ff4-8812-4bfd-b133-8455152e1d9c",
+      "name": "Final Mapping and Naming"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const inputJson = item.json;\n  const cleanedJson = {};\n\n  // 1. Get all the original keys (header names)\n  const originalKeys = Object.keys(inputJson);\n\n  // 2. Loop through each original key\n  originalKeys.forEach(originalKey => {\n    // Trim whitespace and hidden characters from the key name\n    // The replace(/\\W/g, '') removes non-alphanumeric characters (like hyphens, periods, etc.)\n    // If you only want to remove spaces and invisible characters, use .trim()\n    \n    let cleanedKey = originalKey.trim(); \n    \n    // Optional: If you want to replace spaces with underscores for easier dot notation later:\n    // cleanedKey = cleanedKey.replace(/\\s/g, '_'); \n\n    // Optional: Convert to camelCase or lowercase for standardizing\n    // cleanedKey = cleanedKey.toLowerCase(); \n\n    // 3. Map the original value to the new, cleaned key name\n    cleanedJson[cleanedKey] = inputJson[originalKey];\n  });\n  \n  // 4. Return the new object with clean keys\n  return {\n    json: cleanedJson\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -320
+      ],
+      "id": "5017336c-8ec3-4f76-9263-27e484c06307",
+      "name": "Cleanup Aisle 7 (trim hidden)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "217b6204-7633-40e2-9561-75d6c2381f96",
+              "name": "PAGE",
+              "value": "={{ $json.PAGE.split('.')[0] }}",
+              "type": "number"
+            },
+            {
+              "id": "27736644-e892-4888-a4a5-eeec4f0ec2e2",
+              "name": "pagetype",
+              "value": "={{ $json.PAGE % 2 === 0 ? 'Even' : 'Odd' }}",
+              "type": "string"
+            },
+            {
+              "id": "6917b6b1-321b-457f-a202-b0179b00b7cd",
+              "name": "PAGE_FOLIO_LEFT",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "b477a2a2-5687-4483-aef2-d6fbb9c1fbfb",
+              "name": "PAGE_FOLIO_RIGHT",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "9c8632c5-d681-4a57-abc4-18af6e02bf6d",
+              "name": "CATEGORY2",
+              "value": "={{ $json.CATEGORY.split('-')[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "aada8c2e-87cb-4082-8dad-c7598bfe84dc",
+              "name": "SUBCATEGORY",
+              "value": "={{ $json.CATEGORY.split('-')[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "09071f96-0ced-4a36-956a-e6b7e0db97e6",
+              "name": "FREE_SHIP_SKU",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "de520b67-7dee-4580-9a47-aaed1d977193",
+              "name": "SUBTITLE",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "9ea7101b-778d-4fba-8791-73ef831a5623",
+              "name": "SPECIAL_FEATURES",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "f9f3e1de-cdcc-4d57-adba-7a354ddcde82",
+              "name": "IMAGE",
+              "value": "=  https://storage.googleapis.com/dcatalog-image-hosting.firebasestorage.app/novdectestdc/{{ $json.CBD_SKU }}.jpg",
+              "type": "string"
+            },
+            {
+              "id": "64b7d1ca-89b0-4d77-a9a6-edb2a63494f5",
+              "name": "POSTSELL_PRICE",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "51a83e43-d105-4a10-96c8-8c67c211b651",
+              "name": "BULK_BUG",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "bac93ce2-7b58-44dd-ae91-7ba27dc47b1e",
+              "name": "HEX_CATEGORY",
+              "value": "5d2971",
+              "type": "string"
+            },
+            {
+              "id": "0b99b90b-1d63-433c-8879-443f68576f35",
+              "name": "HEX_SUBCATEGORY",
+              "value": "5d2971",
+              "type": "string"
+            },
+            {
+              "id": "3bbad70e-e909-4792-b23e-fa6438bb2cd4",
+              "name": "NEW",
+              "value": "={{ Math.abs($json.DaysDifference) <= 60 ? \"X\" : $json.NEW }}",
+              "type": "string"
+            },
+            {
+              "id": "179da24b-22b4-433a-94f6-da78a9cb11f2",
+              "name": "RETAIL",
+              "value": "={{ $json.RETAIL }}",
+              "type": "number"
+            },
+            {
+              "id": "1e245fb0-1a27-465c-a84c-a242b60661f2",
+              "name": "PRICE",
+              "value": "={{ $json.PRICE }}",
+              "type": "number"
+            },
+            {
+              "id": "cee092c9-6714-4e28-a179-9d5d35c349cd",
+              "name": "SAVE",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "include": "except",
+        "excludeFields": "BUYER, PUB, MEMBER_PRICE, COST, MARGIN, ONHAND, ONORDER, MONTHS_LEFT, LAST12, LAST24, ['60DAY_AVG'], ['180DAY_AVG'], PR_CURR, PR_MEM, PR_WEB_SPEC, PR_START_DT, PR_END_DATE, AMAZON_PRICE, AMAZON_VENDOR, NOV, OCT, SEP, AUG, JUL, JUN, MAY, APR, MAR, PR_MEM_BULK_PRC, ADV_START_DT, DISC_FLAG, FEB, JAN, DEC, RATE, BULK_MEM_PRICE, STATUS_DETAIL, OTHER, CS_MEMPRICE, FUTURE_PRICE, FUTURE_DATE, LOC, PERSON,DaysDifference",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        -320
+      ],
+      "id": "f266dda6-3590-4ae2-be4a-73b2e6fd4449",
+      "name": "Set Fields"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8a5b840a-6680-49fe-a48d-8a57aafe56ac",
+              "name": "PAGE_FOLIO_LEFT",
+              "value": "={{ $json.pagetype === 'Odd' ? 'www.christianbook.com' : $json.PAGE_FOLIO_LEFT }}",
+              "type": "string"
+            },
+            {
+              "id": "bdffe284-8570-45f9-9384-e960dd22217b",
+              "name": "PAGE_FOLIO_RIGHT",
+              "value": "={{ $json.pagetype === 'Even' ? '1-800-Christian' : $json.PAGE_FOLIO_RIGHT }}",
+              "type": "string"
+            },
+            {
+              "id": "9451f65d-21aa-4c83-b393-f66e0eed821c",
+              "name": "SAVE",
+              "value": "={{ $json.PRICE / $json.RETAIL <= 0.90 ? \"Save \" + Math.round((1 - ($json.PRICE / $json.RETAIL)) * 100) + \"%\" : $json.SAVE }}",
+              "type": "string"
+            },
+            {
+              "id": "d3339d77-d308-4786-85e5-289859fa36fa",
+              "name": "SAVE",
+              "value": "={{ $json.SAVE === \"\" && $json.SAVE === null ? $json.SAVE : ($json.RETAIL - $json.PRICE >= 10 ? \"SAVE $\" + Math.round($json.RETAIL - $json.PRICE) : $json.SAVE) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        656,
+        -320
+      ],
+      "id": "0c4f76d8-549c-436d-bca6-b7d5e3a9c850",
+      "name": "Trigger Calcs"
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ $json.PUB_DATE }}",
+        "endDate": "={{ $json.SHIP_DATE }}",
+        "outputFieldName": "DaysDifference",
+        "options": {
+          "includeInputFields": true
+        }
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -320
+      ],
+      "id": "077d9aa4-1f30-4702-a2f7-d3c30aac9051",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "55d81f98-acf2-437a-b687-432bfae55a2e",
+              "leftValue": "={{ $json.PAGE }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        864,
+        -320
+      ],
+      "id": "f5cd4e22-9763-4ab8-8b94-470e56722179",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a professional marketing copywriter for christianbook.com. Your sole task is to rewrite the user-provided product description to be highly engaging, clear, and persuasive, ensuring the output is 200 words or less. **Do not provide multiple versions, commentary, labels (like 'Short Version:', 'Option 1:'), or explanations.** Output ONLY the final, edited product description.: {{ $json.TYPE_COPY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -48
+      ],
+      "id": "21bf1880-c097-4465-8754-7c5310a3c190",
+      "name": "Gemini Rewrite",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "2cZnfQL6wJDWi0pn",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = items[0];\nconst originalCopy = item.json.TYPE_COPY;\nlet rewrittenCopy = originalCopy; // Default to original copy\n\n// Access the output from the 'Gemini Rewrite' node\nconst geminiOutput = items.find(n => n.node === 'Gemini Rewrite');\n\n// Safely extract the text using the nested structure\nif (\n    geminiOutput && \n    geminiOutput.json && \n    geminiOutput.json.candidates && \n    geminiOutput.json.candidates[0] && \n    geminiOutput.json.candidates[0].content && \n    geminiOutput.json.candidates[0].content.parts && \n    geminiOutput.json.candidates[0].content.parts[0].text\n) {\n  rewrittenCopy = geminiOutput.json.candidates[0].content.parts[0].text;\n}\n\n// Output a simple two-column structure for the lookup table\nreturn [{\n    json: {\n        SKU: item.json.SKU,\n        RewrittenCopy: rewrittenCopy\n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -48
+      ],
+      "id": "ed87d95b-28cd-4a7d-ad4c-da927c74ca47",
+      "name": "Code (Extract & Overwrite)"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        -48
+      ],
+      "id": "1dfa809f-5da9-4b5d-8ca7-f648eea85b12",
+      "name": "Wait",
+      "webhookId": "ecf827eb-3561-45e4-be1b-335f5f86e545"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "684d5db3-88e9-4e6b-b228-d9197a1548b5",
+              "leftValue": "TYPE_COPY",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        848,
+        -48
+      ],
+      "id": "d4cf8d35-13c7-404c-856e-4f3eb4bc362c",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "47e9d2bb-ab88-4c4b-94fe-303793687f6f",
+              "name": "Processing_Status",
+              "value": "ERROR: Gemini Failed (Output Missing)",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1136,
+        -32
+      ],
+      "id": "b0ea7d08-a298-4ca1-9124-e512a047971b",
+      "name": "Set (Tag Failure)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "403767f0-2b31-4951-a4b1-2b77138de978",
+              "name": "CBD_SKU",
+              "value": "={{ $json.CBD_SKU }}",
+              "type": "string"
+            },
+            {
+              "id": "adb8de88-d916-41ad-8cd4-35b03295a9a2",
+              "name": "TYPE_COPY",
+              "value": "={{ $json.TYPE_COPY }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -560,
+        -48
+      ],
+      "id": "a47e2bc1-43d0-457f-841a-83094008a100",
+      "name": "Set (Prep for AI)"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -352,
+        -48
+      ],
+      "id": "675bb6bb-afd1-47b4-b6b0-8c13194df11d",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "advanced": true,
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "CBD_SKU",
+              "field2": "CBD_SKU"
+            }
+          ]
+        },
+        "joinMode": "keepEverything",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        192,
+        224
+      ],
+      "id": "3437d4cd-f1d4-41c0-8756-497c18d46442",
+      "name": "Merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Aisle 7 (trim hidden)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Mapping and Naming": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Aisle 7 (trim hidden)": {
+      "main": [
+        [
+          {
+            "node": "Date & Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Fields": {
+      "main": [
+        [
+          {
+            "node": "Trigger Calcs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Calcs": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "main": [
+        [
+          {
+            "node": "Set Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Set (Prep for AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Rewrite": {
+      "main": [
+        [
+          {
+            "node": "Code (Extract & Overwrite)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code (Extract & Overwrite)": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Gemini Rewrite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set (Tag Failure)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set (Tag Failure)": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set (Prep for AI)": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Final Mapping and Naming",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "66e7094b-f9c3-477f-ad86-1cf7d991a97a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "lvMI44YUBj5HdIEj",
+  "tags": []
+}

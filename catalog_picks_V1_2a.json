@@ -1,0 +1,173 @@
+{
+  "name": "catalog picks - UPDATED",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "312d5d9d-c07d-419d-a3c4-b8b0ea441f47",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "SKU",
+        "joinMode": "enrichInput1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        992,
+        16
+      ],
+      "id": "5307abd5-0496-43ec-b7c4-1803b82d5a10",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "10bucoPFwtqYxHhr",
+          "mode": "list",
+          "cachedResultName": "current_seasonal_baseline",
+          "cachedResultUrl": "/projects/EgkKYeoNt3ZOmjUb/datatables/10bucoPFwtqYxHhr"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        192,
+        0
+      ],
+      "id": "a1b206ff-f076-4e78-a261-e4abb63e5ef9",
+      "name": "PROMO RESULTS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- CONFIGURATION ---\nconst MAX_PAGES = 64;\nconst ITEMS_PER_PAGE = 10;\nconst HERO_ITEMS_COUNT = 30; // Pages 1-3\n\n// Helper to clean currency strings \"$1,000.00\" -> 1000.00\nfunction cleanMoney(val) {\n  if (typeof val === 'number') return val;\n  if (!val) return 0;\n  // Use a regex that handles both US and European formats if needed, \n  // but for now, just removing $, %, and commas is sufficient for US currency.\n  return parseFloat(val.toString().replace(/[$,%]/g, ''));\n}\n\n// 1. Process all incoming items\nlet allItems = items.map(item => {\n  const json = item.json;\n  \n  // Calculate Scores (Simplified Normalization)\n  const sales = cleanMoney(json['Promo Net Sales']);\n  const margin = cleanMoney(json['Promo Margin %']);\n  const lift = cleanMoney(json['Promo Lift Sales']);\n  \n  // Weighted Score: 50% Sales, 30% Margin, 20% Lift\n  const score = (sales * 0.5) + (lift * 0.2) + (margin * 1000 * 0.3); \n\n  // Infer Category if missing\n  let cat = json['OFFICERS_CATEGORY'] || json['Category'] || 'General';\n  const desc = (json['Item Description'] || '').toUpperCase();\n  \n  if (!json['OFFICERS_CATEGORY']) {\n    if (desc.includes('BIBLE') || desc.includes('NIV') || desc.includes('ESV')) cat = 'BIBLES';\n    else if (desc.includes('HC') || desc.includes('PB') || desc.includes('BOOK')) cat = 'BOOKS';\n    else if (desc.includes('GIFT') || desc.includes('SET')) cat = 'GIFTS';\n  }\n\n  return {\n    json: {\n      ...json,\n      clean_sales: sales,\n      clean_category: cat,\n      catalog_score: score\n    }\n  };\n});\n\n// 2. Filter valid items (Sales > 0)\n// **THIS LINE WAS CAUSING ISSUES, COMMENTED OUT FOR TESTING:**\n// allItems = allItems.filter(i => i.json.clean_sales > 0);\n// **NEW: Filter out items where sales couldn't be calculated (i.e., not a number)**\nallItems = allItems.filter(i => !isNaN(i.json.clean_sales));\n\n\n// 3. Global Sort by Score\nallItems.sort((a, b) => b.json.catalog_score - a.json.catalog_score);\n\n// 4. Limit to Top 640\nconst topItems = allItems.slice(0, MAX_PAGES * ITEMS_PER_PAGE);\n\n// 5. Layout Strategy\n\n// Part A: Heroes (Top 30 Global)\nconst heroes = topItems.slice(0, HERO_ITEMS_COUNT);\nheroes.forEach((item, index) => {\n  const page = Math.floor(index / ITEMS_PER_PAGE) + 1;\n  item.json.Layout_Section = `Page ${page} (Hero/Best Seller)`;\n});\n\n// Part B: The Body (Remaining Items)\nconst body = topItems.slice(HERO_ITEMS_COUNT);\n\n// Sort Body by Category -> Then Score\nbody.sort((a, b) => {\n  if (a.json.clean_category < b.json.clean_category) return -1;\n  if (a.json.clean_category > b.json.clean_category) return 1;\n  return b.json.catalog_score - a.json.catalog_score;\n});\n\n// Assign Pages to Body\nconst startPage = 4;\nbody.forEach((item, index) => {\n  const page = startPage + Math.floor(index / ITEMS_PER_PAGE);\n  item.json.Layout_Section = `Page ${page} (${item.json.clean_category})`;\n});\n\n// 6. Combine and Return\nconst finalCatalog = [...heroes, ...body];\n\n// Return clean list\nreturn finalCatalog;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "id": "b410fc2f-dc7e-4fb5-bf67-ffd51522e018",
+      "name": "PICK SKUS FOR CATALOG"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "Pqqd0qZlVl1uVYpJ",
+          "mode": "list",
+          "cachedResultName": "n8nparts",
+          "cachedResultUrl": "/projects/EgkKYeoNt3ZOmjUb/datatables/Pqqd0qZlVl1uVYpJ"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        752,
+        128
+      ],
+      "id": "7aaa1d1b-e442-47f2-ba07-ce54350d418b",
+      "name": "ADD PARTS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all SKUs from catalog picks\nconst skus = items.map(item => item.json.SKU);\n\nreturn [{\n  json: {\n    skuList: skus\n  }\n}];\n```\n\n**Then modify ADD PARTS node:**\n- Change from \"Get All\" to \"Get Many\" \n- Use a filter: `SKU is in {{ $json.skuList }}`\n\n**Problem:** n8n data tables may not support \"IN\" queries well.\n\n### Option 2: Use Firebase Directly (Better Approach)\n\nInstead of importing 100K records to n8n tables, query Firebase for just the SKUs you need:\n```\nPICK SKUS FOR CATALOG (640 items)\n  → [Code: Extract SKUs]\n  → [Loop/Split in Batches]\n    → [Firebase: Query by SKU] (batches of 10-30)\n  → [Aggregate Results]\n  → Merge with catalog picks\n```\n\n### Option 3: Pre-filter Parts Import (Best Long-term)\n\nOnly import parts that might be used in catalogs:\n\n**Create a filtered parts table:**\n```\nFirebase Parts (100K)\n  → Filter: Category in [BIBLES, BOOKS, GIFTS, etc.]\n  → Filter: Active = true\n  → Result: ~10-20K records\n  → Import to n8n table: \"active_catalog_parts\""
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        112
+      ],
+      "id": "5d2a2597-23af-4d5d-9f0e-99aa8829dfbc",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "PROMO RESULTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PROMO RESULTS": {
+      "main": [
+        [
+          {
+            "node": "PICK SKUS FOR CATALOG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PICK SKUS FOR CATALOG": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ADD PARTS": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "ADD PARTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c98fd1aa-9719-4509-8adf-d9541ec2c99c",
+  "meta": {
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "cnmifo7j03jMooa1",
+  "tags": []
+}

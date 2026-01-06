@@ -1,0 +1,1236 @@
+{
+  "name": "dcatalog",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2016,
+        -496
+      ],
+      "id": "8ddbea64-b647-4810-b1a4-8e96f9d128d1",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "FTdSjJC8S1ch8URz",
+          "mode": "list",
+          "cachedResultName": "hxpromo",
+          "cachedResultUrl": "/projects/NfiKb9OnyWppoIYz/datatables/FTdSjJC8S1ch8URz"
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        -1808,
+        -496
+      ],
+      "id": "c5883d83-f191-41ce-a3ea-70808fe71abe",
+      "name": "LOAD HX PROMO RESULTS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// CATALOG SKU PICKER - ENHANCED VERSION\n// ============================================================================\n// Purpose: Select the best 640 SKUs (64 pages × 10 products) for a catalog\n// Strategy:\n//   - Pages 1-3 (30 items): Top bestsellers across all categories\n//   - Pages 4-64 (610 items): Grouped by category, sorted by performance\n// ============================================================================\n\n// --- CONFIGURATION ---\nconst CONFIG = {\n  MAX_PAGES: 64,\n  ITEMS_PER_PAGE: 10,\n  BESTSELLER_PAGES: 3,\n  BESTSELLER_COUNT: 30, // 3 pages × 10 items\n  \n  // Scoring weights (must sum to 1.0)\n  WEIGHTS: {\n    sales: 0.40,        // Net sales contribution\n    margin: 0.30,       // Profit margin percentage\n    profit: 0.20,       // Absolute profit dollars\n    lift: 0.10          // Promotional lift sales\n  },\n  \n  // Minimum thresholds for inclusion\n  MIN_SALES: 0,         // Minimum net sales to be included\n  MIN_MARGIN: 0,        // Minimum margin percentage (e.g., 0.20 for 20%)\n  \n  // SKU deduplication strategy\n  DEDUP_STRATEGY: 'highest_score' // Options: 'highest_score', 'first', 'sum_sales'\n};\n\n// --- HELPER FUNCTIONS ---\n\n/**\n * Clean and parse currency/numeric values\n * Handles formats like: \"$1,234.56\", \"1234.56\", \"50%\"\n */\nfunction parseNumeric(value) {\n  if (typeof value === 'number') return value;\n  if (!value || value === '') return 0;\n  \n  const str = String(value).trim();\n  // Remove currency symbols, commas, and percentage signs\n  const cleaned = str.replace(/[$,€£¥%]/g, '');\n  const parsed = parseFloat(cleaned);\n  \n  return isNaN(parsed) ? 0 : parsed;\n}\n\n/**\n * Normalize a value to 0-1 range for scoring\n * Uses min-max normalization with protection against division by zero\n */\nfunction normalize(value, min, max) {\n  if (max === min) return 0;\n  return Math.max(0, Math.min(1, (value - min) / (max - min)));\n}\n\n/**\n * Calculate comprehensive product score\n */\nfunction calculateScore(item, stats) {\n  const sales = parseNumeric(item['Promo_Net_Sales']);\n  const margin = parseNumeric(item['Promo_Margin_Perc']); // Already in percentage (0-1)\n  const profit = parseNumeric(item['Promo_Profit']);\n  const lift = parseNumeric(item['Promo_Lift_Sales']);\n  \n  // Normalize each metric to 0-1 scale\n  const salesNorm = normalize(sales, stats.min.sales, stats.max.sales);\n  const marginNorm = normalize(margin, stats.min.margin, stats.max.margin);\n  const profitNorm = normalize(profit, stats.min.profit, stats.max.profit);\n  const liftNorm = normalize(lift, stats.min.lift, stats.max.lift);\n  \n  // Calculate weighted score\n  const score = (\n    salesNorm * CONFIG.WEIGHTS.sales +\n    marginNorm * CONFIG.WEIGHTS.margin +\n    profitNorm * CONFIG.WEIGHTS.profit +\n    liftNorm * CONFIG.WEIGHTS.lift\n  ) * 1000; // Scale to 0-1000 range for easier interpretation\n  \n  return {\n    score,\n    sales,\n    margin,\n    profit,\n    lift\n  };\n}\n\n/**\n * Infer or clean category from available data\n */\nfunction determineCategory(json) {\n  let category = json['OFFICERS_CATEGORY'] || '';\n  \n  // If category is missing or empty, try to infer from description\n  if (!category || category.trim() === '') {\n    const desc = String(json['Item_Description'] || '').toUpperCase();\n    \n    // Category inference rules\n    if (desc.includes('BIBLE') || desc.includes('NIV') || desc.includes('ESV') || \n        desc.includes('KJV') || desc.includes('NKJV') || desc.includes('NLT')) {\n      category = 'BIBLES';\n    } else if (desc.includes('BOOK') || desc.includes(' HC ') || desc.includes(' PB ') || \n               desc.includes('HARDCOVER') || desc.includes('PAPERBACK')) {\n      category = 'BOOKS';\n    } else if (desc.includes('GIFT') || desc.includes('SET') || desc.includes('NATIVITY') || \n               desc.includes('TIVITY')) {\n      category = 'GIFTS';\n    } else {\n      category = 'GENERAL';\n    }\n  }\n  \n  // Clean and standardize category name\n  return category.toString().trim().toUpperCase();\n}\n\n/**\n * Deduplicate SKUs based on configured strategy\n */\nfunction deduplicateSkus(items) {\n  const skuMap = new Map();\n  \n  items.forEach(item => {\n    const sku = item.json.SKU;\n    \n    if (!skuMap.has(sku)) {\n      skuMap.set(sku, [item]);\n    } else {\n      skuMap.get(sku).push(item);\n    }\n  });\n  \n  const dedupedItems = [];\n  \n  skuMap.forEach((dupes, sku) => {\n    if (dupes.length === 1) {\n      dedupedItems.push(dupes[0]);\n    } else {\n      // Apply deduplication strategy\n      let selectedItem;\n      \n      switch (CONFIG.DEDUP_STRATEGY) {\n        case 'highest_score':\n          selectedItem = dupes.reduce((best, current) => \n            current.json.catalog_score > best.json.catalog_score ? current : best\n          );\n          break;\n          \n        case 'first':\n          selectedItem = dupes[0];\n          break;\n          \n        case 'sum_sales':\n          // Combine sales metrics\n          selectedItem = { ...dupes[0] };\n          selectedItem.json = { ...dupes[0].json };\n          selectedItem.json.clean_sales = dupes.reduce((sum, item) => \n            sum + item.json.clean_sales, 0\n          );\n          selectedItem.json.clean_profit = dupes.reduce((sum, item) => \n            sum + item.json.clean_profit, 0\n          );\n          // Recalculate score with combined metrics\n          selectedItem.json.catalog_score = dupes.reduce((sum, item) => \n            sum + item.json.catalog_score, 0\n          ) / dupes.length;\n          break;\n          \n        default:\n          selectedItem = dupes[0];\n      }\n      \n      dedupedItems.push(selectedItem);\n    }\n  });\n  \n  return dedupedItems;\n}\n\n// --- MAIN PROCESSING ---\n\ntry {\n  // STEP 1: Process all incoming items and calculate metrics\n  console.log(`Processing ${items.length} items...`);\n  \n  let processedItems = items.map((item, index) => {\n    const json = item.json;\n    \n    return {\n      json: {\n        ...json,\n        original_index: index,\n        clean_sales: parseNumeric(json['Promo_Net_Sales']),\n        clean_margin: parseNumeric(json['Promo_Margin_Perc']),\n        clean_profit: parseNumeric(json['Promo_Profit']),\n        clean_lift: parseNumeric(json['Promo_Lift_Sales']),\n        clean_category: determineCategory(json)\n      }\n    };\n  });\n  \n  // STEP 2: Calculate statistics for normalization\n  const validItems = processedItems.filter(item => \n    item.json.clean_sales > CONFIG.MIN_SALES && \n    item.json.clean_margin >= CONFIG.MIN_MARGIN\n  );\n  \n  if (validItems.length === 0) {\n    throw new Error('No valid items found after filtering. Check MIN_SALES and MIN_MARGIN thresholds.');\n  }\n  \n  const stats = {\n    min: {\n      sales: Math.min(...validItems.map(i => i.json.clean_sales)),\n      margin: Math.min(...validItems.map(i => i.json.clean_margin)),\n      profit: Math.min(...validItems.map(i => i.json.clean_profit)),\n      lift: Math.min(...validItems.map(i => i.json.clean_lift))\n    },\n    max: {\n      sales: Math.max(...validItems.map(i => i.json.clean_sales)),\n      margin: Math.max(...validItems.map(i => i.json.clean_margin)),\n      profit: Math.max(...validItems.map(i => i.json.clean_profit)),\n      lift: Math.max(...validItems.map(i => i.json.clean_lift))\n    }\n  };\n  \n  console.log('Statistics:', JSON.stringify(stats, null, 2));\n  \n  // STEP 3: Calculate scores for all valid items\n  validItems.forEach(item => {\n    const scoreData = calculateScore(item.json, stats);\n    item.json.catalog_score = scoreData.score;\n    item.json.score_components = {\n      sales: scoreData.sales,\n      margin: scoreData.margin,\n      profit: scoreData.profit,\n      lift: scoreData.lift\n    };\n  });\n  \n  // STEP 4: Sort by score (highest first)\n  validItems.sort((a, b) => b.json.catalog_score - a.json.catalog_score);\n  \n  console.log(`Valid items after filtering: ${validItems.length}`);\n  console.log(`Top 5 scores: ${validItems.slice(0, 5).map(i => i.json.catalog_score.toFixed(2)).join(', ')}`);\n  \n  // STEP 5: Deduplicate SKUs\n  const dedupedItems = deduplicateSkus(validItems);\n  console.log(`Items after deduplication: ${dedupedItems.length}`);\n  \n  // STEP 6: Select top items for catalog\n  const totalSlots = CONFIG.MAX_PAGES * CONFIG.ITEMS_PER_PAGE;\n  const topItems = dedupedItems.slice(0, totalSlots);\n  \n  console.log(`Selected ${topItems.length} items for catalog`);\n  \n  // STEP 7: Layout strategy\n  \n  // Part A: BESTSELLERS (Pages 1-3)\n  const bestsellers = topItems.slice(0, CONFIG.BESTSELLER_COUNT);\n  bestsellers.forEach((item, index) => {\n    const page = Math.floor(index / CONFIG.ITEMS_PER_PAGE) + 1;\n    const position = (index % CONFIG.ITEMS_PER_PAGE) + 1;\n    \n    item.json.catalog_page = page;\n    item.json.page_position = position;\n    item.json.layout_section = 'BESTSELLERS';\n    item.json.page_label = `Page ${page} - Bestsellers`;\n  });\n  \n  // Part B: CATEGORY PAGES (Pages 4-64)\n  const categoryItems = topItems.slice(CONFIG.BESTSELLER_COUNT);\n  \n  // Group by category and sort within each category by score\n  const categoryGroups = {};\n  categoryItems.forEach(item => {\n    const cat = item.json.clean_category;\n    if (!categoryGroups[cat]) {\n      categoryGroups[cat] = [];\n    }\n    categoryGroups[cat].push(item);\n  });\n  \n  // Sort categories by total score (most valuable categories first)\n  const sortedCategories = Object.entries(categoryGroups)\n    .map(([category, items]) => ({\n      category,\n      items,\n      totalScore: items.reduce((sum, item) => sum + item.json.catalog_score, 0),\n      avgScore: items.reduce((sum, item) => sum + item.json.catalog_score, 0) / items.length\n    }))\n    .sort((a, b) => b.totalScore - a.totalScore);\n  \n  console.log('\\nCategory breakdown:');\n  sortedCategories.forEach(cat => {\n    console.log(`  ${cat.category}: ${cat.items.length} items, avg score: ${cat.avgScore.toFixed(2)}`);\n  });\n  \n  // Assign pages to category items\n  let currentPage = CONFIG.BESTSELLER_PAGES + 1;\n  let currentPosition = 1;\n  \n  sortedCategories.forEach(({ category, items }) => {\n    items.forEach(item => {\n      item.json.catalog_page = currentPage;\n      item.json.page_position = currentPosition;\n      item.json.layout_section = category;\n      item.json.page_label = `Page ${currentPage} - ${category}`;\n      \n      currentPosition++;\n      if (currentPosition > CONFIG.ITEMS_PER_PAGE) {\n        currentPosition = 1;\n        currentPage++;\n      }\n    });\n  });\n  \n  // STEP 8: Combine and return final catalog\n  const finalCatalog = [...bestsellers, ...categoryItems];\n  \n  // Sort by page and position for output\n  finalCatalog.sort((a, b) => {\n    if (a.json.catalog_page !== b.json.catalog_page) {\n      return a.json.catalog_page - b.json.catalog_page;\n    }\n    return a.json.page_position - b.json.page_position;\n  });\n  \n  // Add sequential catalog ID\n  finalCatalog.forEach((item, index) => {\n    item.json.catalog_sequence = index + 1;\n  });\n  \n  console.log(`\\nFinal catalog: ${finalCatalog.length} items across ${currentPage - 1} pages`);\n  console.log(`Bestsellers: ${bestsellers.length} items`);\n  console.log(`Category items: ${categoryItems.length} items`);\n  \n  // Return the processed catalog\n  return finalCatalog;\n  \n} catch (error) {\n  console.error('Error in catalog SKU picker:', error.message);\n  throw error;\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1600,
+        -496
+      ],
+      "id": "dd54dff3-1103-402f-a4b7-245af8120136",
+      "name": "PICK SKUS FOR CATALOG"
+    },
+    {
+      "parameters": {
+        "content": "Use API to add fields: \n\nproduct_desc:\nauthor_names:\nmain_description:\nshort_description:\ncategory_levels.0\ncategory_levels.1\ngoogle_data.google_product_category\ncbd_savings\ncbd_savings_perc:\naai\n* Colors\n* Size\n* Media Type\n* Binding\n* Communion Cup Quantity\nExtra Info\n  * By Author\n  * Series\n",
+        "height": 512,
+        "width": 288,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        960,
+        -864
+      ],
+      "typeVersion": 1,
+      "id": "7da3c897-23f9-4837-9326-b7f199c6e42f",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Final Mapping and naming are the fields expected by DCatalog",
+        "height": 80,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -784,
+        736
+      ],
+      "typeVersion": 1,
+      "id": "b3abdf82-3310-46aa-945e-b8d4cd2dfa05",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "CSV file for DCatalog",
+        "height": 80,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        640,
+        848
+      ],
+      "typeVersion": 1,
+      "id": "63adcafb-055d-4d55-9edc-e3431364c5e1",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8a5b840a-6680-49fe-a48d-8a57aafe56ac",
+              "name": "PAGE_FOLIO_LEFT",
+              "value": "={{ $json.pagetype === 'Odd' ? 'www.christianbook.com' : $json.PAGE_FOLIO_LEFT }}",
+              "type": "string"
+            },
+            {
+              "id": "bdffe284-8570-45f9-9384-e960dd22217b",
+              "name": "PAGE_FOLIO_RIGHT",
+              "value": "={{ $json.pagetype === 'Even' ? '1-800-Christian' : $json.PAGE_FOLIO_RIGHT }}",
+              "type": "string"
+            },
+            {
+              "id": "9451f65d-21aa-4c83-b393-f66e0eed821c",
+              "name": "SAVE",
+              "value": "={{ $json.PRICE / $json.RETAIL <= 0.90 ? \"Save \" + Math.round((1 - ($json.PRICE / $json.RETAIL)) * 100) + \"%\" : $json.SAVE }}",
+              "type": "string"
+            },
+            {
+              "id": "d3339d77-d308-4786-85e5-289859fa36fa",
+              "name": "SAVE",
+              "value": "={{ $json.SAVE === \"\" && $json.SAVE === null ? $json.SAVE : ($json.RETAIL - $json.PRICE >= 10 ? \"SAVE $\" + Math.round($json.RETAIL - $json.PRICE) : $json.SAVE) }}",
+              "type": "string"
+            },
+            {
+              "id": "ef965887-abf0-49c2-8585-4f6793b6fdbf",
+              "name": "TYPE_COPY",
+              "value": "={{ $json.COPY === 'X' ? $json.TYPE_COPY : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "7d4b94b6-734f-4a65-844f-0731d86c644c",
+              "name": "IMAGE",
+              "value": "={{ $json.PHOTO === 'X' ?  $json.IMAGE: '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        496,
+        416
+      ],
+      "id": "a6666dd9-8d25-48a7-8039-07c34a795657",
+      "name": "Trigger Calcs"
+    },
+    {
+      "parameters": {
+        "content": "TRIGGER CALCS i.e. if page number is odd, add christianbook.com to bottom of page, 800 number if page is even, add image url, etc."
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        672,
+        400
+      ],
+      "typeVersion": 1,
+      "id": "6d86ae63-1de9-4d0e-b1a5-a15ae668fb79",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1136,
+        272
+      ],
+      "id": "1a5a1b6d-e639-49e5-9ce3-7d31c220e181",
+      "name": "Wait",
+      "webhookId": "ecf827eb-3561-45e4-be1b-335f5f86e545"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "684d5db3-88e9-4e6b-b228-d9197a1548b5",
+              "leftValue": "TYPE_COPY",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -288,
+        272
+      ],
+      "id": "1cc25e62-6583-4331-a3aa-33883c86a2e4",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "47e9d2bb-ab88-4c4b-94fe-303793687f6f",
+              "name": "Processing_Status",
+              "value": "ERROR: Gemini Failed (Output Missing)",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        288
+      ],
+      "id": "8f2320b4-5871-4064-b4c8-5d6bfd01bd71",
+      "name": "Set (Tag Failure)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c68d833c-e65d-45ef-bafa-461489db8df4",
+              "name": "SKU",
+              "value": "={{ $json.SKU }}",
+              "type": "string"
+            },
+            {
+              "id": "2f0d789d-442d-49d4-a9ea-acc10c626831",
+              "name": "main_description",
+              "value": "={{ $json.main_description }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1760,
+        272
+      ],
+      "id": "55f5ef3f-112d-4322-b744-e0dbe0b2d8a3",
+      "name": "Set (Prep for AI)"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1360,
+        272
+      ],
+      "id": "7747c85d-f9fb-4f70-af59-2ba8a8984a24",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "advanced": true,
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "SKU",
+              "field2": "CBD_SKU"
+            }
+          ]
+        },
+        "joinMode": "enrichInput1",
+        "options": {
+          "clashHandling": {
+            "values": {
+              "resolveClash": "preferLast",
+              "mergeMode": "shallowMerge",
+              "overrideEmpty": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1088,
+        624
+      ],
+      "id": "3e580243-a425-4ad1-829c-31eeb5ad2dc4",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "let extractedText = '';\nlet originalSKU = 'UNKNOWN_SKU';\n\n// --- 1. Identify and Extract the Rewritten Text ---\n// We assume the raw Gemini output JSON is the content of the first item's .json property.\nconst rawGeminiOutput = items[0].json; \n\n// Safely extract the text using the validated path: .content.parts[0].text\nif (\n    rawGeminiOutput && \n    rawGeminiOutput.content && \n    rawGeminiOutput.content.parts && \n    rawGeminiOutput.content.parts[0] && \n    rawGeminiOutput.content.parts[0].text\n) {\n  extractedText = rawGeminiOutput.content.parts[0].text;\n}\n\n// --- 2. Extract SKU using the Pipe Delimiter ---\n\n// The RewrittenCopy now starts with SKU|\nif (extractedText.includes('|')) {\n    const parts = extractedText.split('|');\n    \n    // The SKU is the first part, and the rewritten text is the second part\n    originalSKU = parts[0].trim();\n    extractedText = parts.slice(1).join('|').trim(); // Recombine if there are multiple pipes\n\n    // Optional: Log the extracted SKU for debugging\n    // console.log(`Extracted SKU: ${originalSKU}`);\n}\n\n// --- 3. Output the required 2-column lookup table (SKU + Rewritten Copy) ---\nreturn [{\n    json: {\n        // Output the extracted SKU\n        CBD_SKU: originalSKU, \n        // Output the successfully extracted text (without the SKU prefix)\n        RewrittenCopy: extractedText \n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        272
+      ],
+      "id": "ba2c9a14-a885-4c1a-9581-7397bb544ae5",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8fb4bbff-4f0d-4e5a-938e-ce04adbfb5a1",
+              "leftValue": "={{ $json.main_description }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -1584,
+        272
+      ],
+      "id": "4d880e65-3172-4cbc-883c-dba8adaa6d41",
+      "name": "Filter1"
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -240,
+        560
+      ],
+      "id": "4a8402a6-4a7c-416d-89f9-7a9a603b2df4",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// This function maps the input data items to new output items\nreturn items.map(item => {\n  const json = item.json;\n\n   return {\n     \"sequence_id\" : json.sequence_id || 0,\n     \"PAGE\": json.PAGE || 0,    \n     \"CATEGORY\": $input.first().json.category_levels_0[0] || '', \n     \"SUBCATEGORY\": $input.first().json.category_levels_0[1] || '',\n     \"GROUP_BY\": json.BUILT_UNDER_SKU || '',\n     \"SKU\": $input.first().json.SKU|| '',\n     \"FREE_SHIP_SKU\":json.FREE_SHIP_SKU || '',\n     \"TITLE\": $input.first().json.product_desc || '',\n     \"SUBTITLE\":json.SUBTITLE || '',\n     \"AUTHOR\": $input.first().json.author_names|| '',\n     \"COPY\":json.RewrittenCopy || '',\n     \"SPECIAL_FEATURES\":json.SPECIAL_FEATURES || '',\n     \"IMAGE\":json.PHOTO2 || '',\n     \"POSTSELL1\":json.POSTSELL1 || '',\n     \"POSTSELL2\":json.POSTSELL2 || '',\n     \"POSTSELL3\":json.POSTSELL3 || '',\n     \"RETAIL\": $input.first().json.retail|| '',\n     \"FEATURE_PRICE\":$input.first().json.price || '',\n     \"POSTSELL_PRICE\":json.POSTSELL_PRICE || '',\n     \"PRICE\":json.PRICE || '',\n     \"NEW\":json.NEW || '',\n     \"SAVE_BUG\":json.SAVE || '',\n     \"BULK_BUG\":json.BULK_BUG || '',\n     \"PAGE_FOLIO_LEFT\":json.PAGE_FOLIO_LEFT || '',\n     \"PAGE_FOLIO_RIGHT\":json.PAGE_FOLIO_RIGHT || '',\n     \"HEX_CATEGORY\":json.HEX_CATEGORY || '',\n     \"HEX_SUBCATEGORY\":json.HEX_SUBCATEGORY || '',\n     \"ROW_TYPE\": $input.first().json.row_type || '',\n     \"PARENT_SKU\": $input.first().json.parent_sku\n            };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        560
+      ],
+      "id": "9a2b8a66-b2f0-4377-ba79-476229a80108",
+      "name": "Final Mapping and Naming1"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a professional marketing copywriter for christianbook.com. Your sole task is to rewrite the user-provided product description to be highly engaging, clear, and persuasive, ensuring the output is 200 words or less. **Do not provide multiple versions, commentary, labels (like 'Short Version:', 'Option 1:'), or explanations.** Output ONLY the final, edited product description. Include the SKU from the input at the start of your response, followed by a pipe delimiter (|), and then the rewritten description. The input is: {{ $json.SKU }}{{ $json.main_description }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        272
+      ],
+      "id": "9d85ecab-384d-4191-b332-5574ef4ec323",
+      "name": "Gemini Rewrite1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "HidzdviTofISsQMG",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const obj = {};\nfor (const item of $input.all()) {\n  if (!(item.json.SKU in obj)) {\n    obj[item.json.SKU] = [];\n  }\n  obj[item.json.SKU].push(item.json)\n}\n\nconst arrayRecord = Object.keys(obj).map(key => {\n  return {\n    SKU: key,\n    data: JSON.stringify(obj[key])\n  }\n})\n\n// Split incoming items into chunks of 100\nconst chunkSize = 100;\n\nconst batches = [];\nfor (let i = 0; i < arrayRecord.length; i += chunkSize) {\n  batches.push(arrayRecord.slice(i, i + chunkSize));\n}\n\n// Return one item per batch\nreturn batches.map(batch => ({ json: { batch } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        -848
+      ],
+      "id": "61f99749-bd8f-4f4d-8d0d-a7566686ed5c",
+      "name": "Unique Sku Batch Groups"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "SKU",
+        "joinMode": "enrichInput1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        224,
+        -96
+      ],
+      "id": "e98ab192-4382-44dd-9db0-2b76d65c5b43",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b021cd1c-c235-4592-9bc2-2917b9c65332",
+              "leftValue": "={{ $json.SKU }}",
+              "rightValue": "000382",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        928,
+        0
+      ],
+      "id": "32fdd42c-3c26-43db-808e-d09c6c9ca570",
+      "name": "Filter",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "fileName": "corecatalog.csv",
+        "parentId": "=",
+        "binaryData": true
+      },
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [
+        240,
+        784
+      ],
+      "id": "6e580e26-d28d-43c5-82c0-4666d409a13e",
+      "name": "Upload a file",
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "DgG27c7AmK9QAyvx",
+          "name": "Microsoft Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Sku Picking\n* Determine what skus should be in the catalog",
+        "height": 464,
+        "width": 864
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2064,
+        -640
+      ],
+      "typeVersion": 1,
+      "id": "7d847447-cc71-401e-8875-fe29bd2ca90b",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "## Product Details Fetch",
+        "height": 80,
+        "width": 1792,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -912,
+        -1184
+      ],
+      "typeVersion": 1,
+      "id": "addd381c-943d-4976-a536-1f353b1d5b7a",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst items = $input.all()\nconst skuString = items[0].json.batch.map(item => item.SKU.trim())\n\nreturn [{skus: skuString.toString() }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        -976
+      ],
+      "id": "384f625c-56da-4668-8b8e-08ae1bd44d6c",
+      "name": "Build Product Sku Search"
+    },
+    {
+      "parameters": {
+        "url": "=https://apistaging.christianbook.com/api/v1/search/product/info?skus={{ $json.skus }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Cookie\": \"reader_device_token=11111; reader_session_token=1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -512,
+        -672
+      ],
+      "id": "20017b27-826c-4c6d-a94b-23c775f44cf1",
+      "name": "Fetch Product Info From API"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -592,
+        -1136
+      ],
+      "id": "a92da565-a7dd-40e3-8cda-f1beb258f8aa",
+      "name": "Loop Over Sku Batches"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\n\nconst batchedData = $('Loop Over Sku Batches').first().json.batch;\nconsole.log(batchedData)\nconst allRecords = [];\nfor (const { json } of $input.all()) {\n  for (const record of json.records) {\n    const allBatchedData = batchedData.filter(batchRecord => batchRecord.SKU === record._id)\n    const source = record._source;\n\n    // Main Onix Description if available otherwise Typeset\n    let mainDesc = source.typeset;    \n    const hasMainDescription = source.onix?.data.filter(onixData => onixData.normalized_type === 'main_description');\n    if (hasMainDescription.length > 0) {\n      mainDesc = hasMainDescription[0].pub_desc;\n    }\n    \n    // Short Description\n    let shortDesc = '';\n    const hasShortDescription = source.onix?.data.filter(onixData => onixData.normalized_type === 'short_description');\n    if (hasShortDescription.length > 0) {\n      shortDesc = hasShortDescription[0].pub_desc;\n    }\n\n    // Categories\n    const cat_level_0 = (source.category_levels && source.category_levels !== null) ? source.category_levels[0] :'';\n    const cat_level_1 = (source.category_levels && source.category_levels !== null) ? source.category_levels[1] :'';\n\n   // Variants\n  const variantConfigs = [\n    { path: ['variants', 'colors'], type: 'color', skuKey: 'sku', nameKey: 'aai_color' },\n    { path: ['variants', 'general', 'binding'], type: 'binding', skuKey: 'item_no', nameKey: 'variant_name' },\n    { path: ['variants', 'size', 'sizes'], type: 'size', skuKey: 'item_no', nameKey: 'size_name' },\n    { path: ['variants', 'communion_cup', 'quantity'], type: 'quantity', skuKey: 'item_no', nameKey: 'variant_name' },\n    { path: ['variants', 'general', 'mediatype'], type: 'media_type', skuKey: 'item_no', nameKey: 'variant_name' }\n  ];\n  \n  const aai = variantConfigs.flatMap(({ path, type, skuKey, nameKey }) => {\n    const value = path.reduce((obj, key) => obj?.[key], source);\n    return Array.isArray(value) \n      ? value.map(item => ({ type, sku: item[skuKey], name: item[nameKey] }))\n      : [];\n  });\n\n    const obj = {\n      SKU: record._id,\n      product_desc: source.product_desc,\n      author_names: source.full_auth_name,\n      series: source.series,\n      retail: $input.first().json.records[0]._source['Retail Price'],\n      price: $input.first().json.records[0]._source['CBD Price'],\n      main_description: mainDesc,\n      short_description: shortDesc,\n      category_levels_0: cat_level_0,\n      category_levels_1: cat_level_1,\n      google_product_category: source?.google_data?.google_product_category,\n      cbd_savings: source.cbd_savings,\n      cbd_savings_perc: source.cbd_savings_percent\n      ,initialData: allBatchedData.length > 0 ? allBatchedData[0].data : {}\n      ,aai\n    };\n    allRecords.push(obj)\n  }\n}\n\n return allRecords;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        -864
+      ],
+      "id": "d32e23c2-bb8f-4c4d-8183-e52aa4d2dee1",
+      "name": "Extract Required Sku Data"
+    },
+    {
+      "parameters": {
+        "url": "=https://apistaging.christianbook.com/api/v1/search/product?displayTree=false&size=10&customizationsEnabled=false&curationsEnabled=false&page=1&displayResult=true&searchField=series&searchTerm={{ $json.series }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Cookie\": \"reader_device_token=11111; reader_session_token=1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        256,
+        -448
+      ],
+      "id": "5b924af7-3db7-46e1-adc0-937ba8b6e955",
+      "name": "Fetch Product Series"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3623cddb-89f0-444f-9455-903196a3d762",
+              "leftValue": "={{ $json.series }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c9c102a4-83be-47f8-9281-dbec84de4079",
+              "leftValue": "={{ $json.series }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        576,
+        -400
+      ],
+      "id": "cf143024-9e75-48df-80de-d2e340c76c50",
+      "name": "If Product Series Exists"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3623cddb-89f0-444f-9455-903196a3d762",
+              "leftValue": "={{ $json.author_names }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "0bad97be-9baa-4e99-94a4-bb35fa90a791",
+              "leftValue": "={{ $json.author_names }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        336,
+        -736
+      ],
+      "id": "13715330-4d75-46b5-b08d-e46bdb0bc3b1",
+      "name": "If has Authors"
+    },
+    {
+      "parameters": {
+        "url": "=https://apistaging.christianbook.com/api/v1/search/product?displayTree=false&size=10&customizationsEnabled=false&curationsEnabled=false&page=1&displayResult=true&searchField=Author/Artist&searchTerm={{ $json.author_names }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Cookie\": \"reader_device_token=11111; reader_session_token=1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        656,
+        -816
+      ],
+      "id": "b0f913d3-1979-4e61-9f49-8cae02fe26df",
+      "name": "Fetch Products by this Author"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst result = $input.all();\nconst final = $('Enrich Each product').first().json\nconsole.log({\n  result: result[0].json\n})\nfinal.seriesSkus = [];\nfor (const seriesProduct of result[0].json.records)  {\n  final.seriesSkus.push({\n    sku: seriesProduct._source.item_no,\n    name: seriesProduct._source.product_desc\n  })\n}\nreturn final;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        -432
+      ],
+      "id": "7ba044f8-19fd-4791-95dd-ab630238feb2",
+      "name": "Add Series Skus to record"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst result = $input.all();\nconst final = $('If has Authors').first().json\nconsole.log({\n  result: result[0].json\n})\nfinal.authorSkus = [];\nfor (const seriesProduct of result[0].json.records)  {\n  final.authorSkus.push({\n    sku: seriesProduct._source.item_no,\n    name: seriesProduct._source.product_desc\n  })\n}\nreturn final;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -608
+      ],
+      "id": "871200c3-eebd-472f-a6a9-0d28fd74aa25",
+      "name": "Add Author Data Skus to record"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "SKU",
+        "joinMode": "keepEverything",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -672,
+        -384
+      ],
+      "id": "e1adc071-aa8c-4cdb-8d1a-467198b0b494",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        48,
+        -848
+      ],
+      "id": "4779f53d-f4e3-4fc7-b56d-4913edda3632",
+      "name": "Enrich Each product"
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "search",
+        "query": "Documents"
+      },
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [
+        32,
+        784
+      ],
+      "id": "4a737e19-8282-498d-8c16-045dc4ab088c",
+      "name": "Search a folder",
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "DgG27c7AmK9QAyvx",
+          "name": "Microsoft Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb",
+          "mode": "list",
+          "cachedResultName": "dcatalog",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -32,
+        560
+      ],
+      "id": "1520d143-be31-4893-948b-212a669674d6",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "QWreNJ1EsqB46A3S",
+          "name": "Google Drive account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// For 'Run Once for All Items' mode\nconst outputItems = [];\n\nfor (const item of $input.all()) {\n  // Add the main product row\n  const mainRow = {\n    json: {\n      ...item.json\n    }\n  };\n  \n  // Store references before deleting\n  const aaiArray = mainRow.json.aai;\n  const authorSkusArray = mainRow.json.authorSkus;\n  const seriesSkusArray = mainRow.json.seriesSkus;\n  \n  // Remove the arrays from the main row\n  delete mainRow.json.aai;\n  delete mainRow.json.authorSkus;\n  delete mainRow.json.seriesSkus;\n  \n  // Add row_type to main row\n  mainRow.json.row_type = 'main';\n  \n  outputItems.push(mainRow);\n  \n  // Process AAI items\n  if (aaiArray && Array.isArray(aaiArray) && aaiArray.length > 0) {\n    for (const aaiItem of aaiArray) {\n      outputItems.push({\n        json: {\n          SKU: aaiItem.sku,\n          product_desc: aaiItem.name,\n          row_type: 'aai',\n          parent_sku: item.json.SKU || item.json.sku\n        }\n      });\n    }\n  }\n  \n  // Process Author SKUs\n  if (authorSkusArray && Array.isArray(authorSkusArray) && authorSkusArray.length > 0) {\n    for (const authorItem of authorSkusArray) {\n      outputItems.push({\n        json: {\n          SKU: authorItem.sku,\n          product_desc: authorItem.name,\n          row_type: 'author',\n          parent_sku: item.json.SKU || item.json.sku\n        }\n      });\n    }\n  }\n  \n  // Process Series SKUs\n  if (seriesSkusArray && Array.isArray(seriesSkusArray) && seriesSkusArray.length > 0) {\n    for (const seriesItem of seriesSkusArray) {\n      outputItems.push({\n        json: {\n          SKU: seriesItem.sku,\n          product_desc: seriesItem.name,\n          row_type: 'series',\n          parent_sku: item.json.SKU || item.json.sku\n        }\n      });\n    }\n  }\n}\n\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -112
+      ],
+      "id": "83c52b9c-5ff5-4f70-8649-632cab60d216",
+      "name": "Code in JavaScript1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "LOAD HX PROMO RESULTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LOAD HX PROMO RESULTS": {
+      "main": [
+        [
+          {
+            "node": "PICK SKUS FOR CATALOG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Gemini Rewrite1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set (Tag Failure)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set (Tag Failure)": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set (Prep for AI)": {
+      "main": [
+        [
+          {
+            "node": "Filter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Final Mapping and Naming1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Mapping and Naming1": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Rewrite1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PICK SKUS FOR CATALOG": {
+      "main": [
+        [
+          {
+            "node": "Unique Sku Batch Groups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unique Sku Batch Groups": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Loop Over Sku Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Set (Prep for AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Product Sku Search": {
+      "main": [
+        [
+          {
+            "node": "Fetch Product Info From API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Product Info From API": {
+      "main": [
+        [
+          {
+            "node": "Extract Required Sku Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Sku Batches": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Product Sku Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Required Sku Data": {
+      "main": [
+        [
+          {
+            "node": "Enrich Each product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Product Series": {
+      "main": [
+        [
+          {
+            "node": "Add Series Skus to record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Product Series Exists": {
+      "main": [
+        [
+          {
+            "node": "Fetch Product Series",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "If has Authors": {
+      "main": [
+        [
+          {
+            "node": "Fetch Products by this Author",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Product Series Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Products by this Author": {
+      "main": [
+        [
+          {
+            "node": "Add Author Data Skus to record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Series Skus to record": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Author Data Skus to record": {
+      "main": [
+        [
+          {
+            "node": "If Product Series Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Enrich Each product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Each product": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Sku Batches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If has Authors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search a folder": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f8b20263-953e-48fa-b34f-3548542d5e92",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "tA0HjPo1UXLYO6Nu",
+  "tags": []
+}

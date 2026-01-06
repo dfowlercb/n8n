@@ -1,0 +1,347 @@
+{
+  "name": "catalog picks",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "16FJfeJXH-RSjPx6xs9Ja_tJ8SEVtmB0G",
+          "mode": "list",
+          "cachedResultName": "current_seasonal_baseline.csv",
+          "cachedResultUrl": "https://drive.google.com/file/d/16FJfeJXH-RSjPx6xs9Ja_tJ8SEVtmB0G/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -96,
+        -192
+      ],
+      "id": "f06404ad-9914-405a-8f88-6dbb5ba2cbfe",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "skipRecordsWithErrors": {
+            "value": {
+              "enabled": true,
+              "maxSkippedRecords": 10
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        96,
+        -192
+      ],
+      "id": "c3830eb6-cafb-409f-8eb8-e9fa09fa8ffe",
+      "name": "Extract from File",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4b79cdfd-ca2b-4769-a484-27a5cc0b76b6",
+              "leftValue": "={{ $json['Promo Net Sales'] }}",
+              "rightValue": 18000,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        -208
+      ],
+      "id": "cb7dab39-f82f-4cd0-acfa-488cce38f127",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3309e6f6-2adf-4549-a0e5-1d35f8b68165",
+              "name": "Promo Net Sales",
+              "value": "={{ $json['Promo Net Sales'] }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        -208
+      ],
+      "id": "97a91821-f3fd-4adf-9fcb-0f559da4b4af",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.christianbook.com/Christian/Books/product?sku={{$json.SKU}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "en-US,en;q=0.9"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+            },
+            {
+              "name": "Referer",
+              "value": "https://www.christianbook.com/ Cache-Control: no-cache"
+            },
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -96,
+        -16
+      ],
+      "id": "32ace4f7-5605-4643-9f8d-9f856b562cf6",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simple debug to see what we got\nfor (const item of items) {\n  // Log first 2000 characters of HTML\n  console.log('HTML Preview:', item.json.data?.substring(0, 2000));\n  \n  // Check if description class exists\n  const hasDescription = item.json.data?.includes('CBD-ProductDetail-Description');\n  console.log('Contains description class:', hasDescription);\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        -16
+      ],
+      "id": "ed95e954-2ae6-4483-85c9-55f4e8187a9b",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1075f93-7808-4059-9a1e-e8a488b62ee6",
+              "name": "html",
+              "value": "={{$json.data}}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        368,
+        -16
+      ],
+      "id": "6da7808c-39f7-4419-a2b3-5d19f85838c0",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        -192
+      ],
+      "id": "31f5ab3e-a418-4aa4-93b8-c1fa85bf286d",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of items) {\n  const html = item.json.data || '';\n  \n  let description = '';\n  let productTitle = '';\n  \n  // Extract product title\n  const titleMatch = html.match(/<title>(.*?)<\\/title>/);\n  productTitle = titleMatch ? titleMatch[1].replace(' - Christianbook.com', '').trim() : '';\n  \n  // Try multiple methods to find the description\n  \n  // Method 1: Look for the description paragraph class\n  let match = html.match(/<div[^>]*class=\"[^\"]*CBD-ProductDetail-Description-Paragraph[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>/);\n  \n  // Method 2: Look for product description meta tag\n  if (!match || !match[1]) {\n    match = html.match(/<meta\\s+name=\"description\"\\s+content=\"([^\"]*)\"/);\n  }\n  \n  // Method 3: Look for any element with product description\n  if (!match || !match[1]) {\n    match = html.match(/<div[^>]*class=\"[^\"]*product-description[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>/);\n  }\n  \n  if (match && match[1]) {\n    description = match[1]\n      .replace(/<[^>]*>/g, '') // Remove HTML tags\n      .replace(/&nbsp;/g, ' ')\n      .replace(/&amp;/g, '&')\n      .replace(/&lt;/g, '<')\n      .replace(/&gt;/g, '>')\n      .replace(/&quot;/g, '\"')\n      .replace(/&#39;/g, \"'\")\n      .replace(/\\s+/g, ' ') // Normalize whitespace\n      .trim();\n  }\n  \n  // If no description found, check if it's actually a product page\n  if (!description) {\n    if (html.includes('Christian Books, Bibles, Gifts & more')) {\n      description = 'ERROR: Redirected to homepage - product may not exist';\n    } else {\n      description = 'Description not found on page';\n    }\n  }\n  \n  results.push({\n    json: {\n      SKU: item.json.SKU,\n      'Promo Net Sales': item.json['Promo Net Sales'],\n      'Item Description': item.json['Item Description'],\n      productTitle: productTitle,\n      description: description,\n      // Keep all original fields\n      ...item.json\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -16
+      ],
+      "id": "155742f5-70a2-4f17-ae2c-77b3793e000b",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- CONFIGURATION ---\nconst MAX_PAGES = 64;\nconst ITEMS_PER_PAGE = 10;\nconst HERO_ITEMS_COUNT = 30; // Pages 1-3\n\n// Helper to clean currency strings \"$1,000.00\" -> 1000.00\nfunction cleanMoney(val) {\n  if (typeof val === 'number') return val;\n  if (!val) return 0;\n  return parseFloat(val.toString().replace(/[$,%]/g, ''));\n}\n\n// 1. Process all incoming items\nlet allItems = items.map(item => {\n  const json = item.json;\n  \n  // Calculate Scores (Simplified Normalization)\n  // Note: For true normalization we'd need max values, but raw values work for sorting relative to each other\n  const sales = cleanMoney(json['Promo Net Sales']);\n  const margin = cleanMoney(json['Promo Margin %']);\n  const lift = cleanMoney(json['Promo Lift Sales']);\n  \n  // Weighted Score: 50% Sales, 30% Margin, 20% Lift\n  // We multiply margin by 100 to make it comparable to sales figures roughly, or just rely on the sort\n  // Better approach for simple sort: Just weighted sum of raw values if scales differ wildly? \n  // Let's use a simplified \"Power Score\" for n8n without external libraries:\n  const score = (sales * 0.5) + (lift * 0.2) + (margin * 1000 * 0.3); \n\n  // Infer Category if missing\n  let cat = json['OFFICERS_CATEGORY'] || json['Category'] || 'General';\n  const desc = (json['Item Description'] || '').toUpperCase();\n  \n  if (!json['OFFICERS_CATEGORY']) {\n    if (desc.includes('BIBLE') || desc.includes('NIV') || desc.includes('ESV')) cat = 'BIBLES';\n    else if (desc.includes('HC') || desc.includes('PB') || desc.includes('BOOK')) cat = 'BOOKS';\n    else if (desc.includes('GIFT') || desc.includes('SET')) cat = 'GIFTS';\n  }\n\n  return {\n    json: {\n      ...json,\n      clean_sales: sales,\n      clean_category: cat,\n      catalog_score: score\n    }\n  };\n});\n\n// 2. Filter valid items (Sales > 0)\nallItems = allItems.filter(i => i.json.clean_sales > 0);\n\n// 3. Global Sort by Score\nallItems.sort((a, b) => b.json.catalog_score - a.json.catalog_score);\n\n// 4. Limit to Top 640\nconst topItems = allItems.slice(0, MAX_PAGES * ITEMS_PER_PAGE);\n\n// 5. Layout Strategy\n\n// Part A: Heroes (Top 30 Global)\nconst heroes = topItems.slice(0, HERO_ITEMS_COUNT);\nheroes.forEach((item, index) => {\n  const page = Math.floor(index / ITEMS_PER_PAGE) + 1;\n  item.json.Layout_Section = `Page ${page} (Hero/Best Seller)`;\n});\n\n// Part B: The Body (Remaining Items)\nconst body = topItems.slice(HERO_ITEMS_COUNT);\n\n// Sort Body by Category -> Then Score\nbody.sort((a, b) => {\n  if (a.json.clean_category < b.json.clean_category) return -1;\n  if (a.json.clean_category > b.json.clean_category) return 1;\n  return b.json.catalog_score - a.json.catalog_score;\n});\n\n// Assign Pages to Body\nconst startPage = 4;\nbody.forEach((item, index) => {\n  const page = startPage + Math.floor(index / ITEMS_PER_PAGE);\n  item.json.Layout_Section = `Page ${page} (${item.json.clean_category})`;\n});\n\n// 6. Combine and Return\nconst finalCatalog = [...heroes, ...body];\n\n// Return clean list\nreturn finalCatalog;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -208
+      ],
+      "id": "e320266a-a099-4bd4-9a48-9ffd84b32aa4",
+      "name": "gemini picks skus"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "gemini picks skus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gemini picks skus": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ae4829a4-4419-42a0-a8e7-3820a2a48762",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "POap0cAaRy72dyDc",
+  "tags": []
+}

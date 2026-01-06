@@ -1,0 +1,245 @@
+{
+  "name": "page_density",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        -160
+      ],
+      "id": "264f25bd-b42c-44de-a82a-63654d256759",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1v0LJ9tmI3ocuMvkr3Wib9SLcTwSDAsMC",
+          "mode": "list",
+          "cachedResultName": "template.csv",
+          "cachedResultUrl": "https://drive.google.com/file/d/1v0LJ9tmI3ocuMvkr3Wib9SLcTwSDAsMC/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        -160
+      ],
+      "id": "a390a207-3f3b-424d-9947-2feea42cc27f",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        -160
+      ],
+      "id": "eab0253e-639e-4426-bddb-99b3f9c91726",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "name": "template_maximum_density.csv",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb",
+          "mode": "list",
+          "cachedResultName": "dcatalog",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1Gz59n0-CI04Ok4zyb_bd_PD79paJwOTb"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        272,
+        80
+      ],
+      "id": "fe510787-da1a-4b30-9be0-e0efb45fdd9b",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "mutSuvNDd8nFLoEx",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        80
+      ],
+      "id": "213c9ca2-ff36-49c7-96ca-8f0ce179a359",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c7ea4fe1-4cd6-4aae-be0e-ce18806eab63",
+              "name": "HEIGHT",
+              "value": "={{ \n  // 1. Feature WITH Postsells (1.80)\n  $json.COPY && $json.RETAIL && $json.FEATURE_PRICE && ($json.POSTSELL0 || $json.POSTSELL2 || $json.POSTSELL3 || $json.POSTSELL5) \n  ? 1.80 \n  : (\n    // 2. Feature NO Postsells (1.65)\n    $json.COPY && !$json.POSTSELL0 && !$json.POSTSELL2 && !$json.POSTSELL3 && !$json.POSTSELL5 \n    ? 1.65 \n    : (\n      // 3. Postsell Item (0.12)\n      !$json.COPY && !$json.RETAIL && !$json.FEATURE_PRICE\n      ? 0.12\n      : 0 \n    )\n  )\n  }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        -160
+      ],
+      "id": "5b45ea7e-7ae9-4886-89a1-b7c1354cddc0",
+      "name": "assign initial heights"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# ============================================================================\n# CONFIGURATION\n# ============================================================================\nPOSTSELL_TITLE_CHARS_PER_LINE = 45\nFULL_COLUMN_HEIGHT = 9.625\nPAGE_HEADER_REDUCTION = 0.66\nSUBCATEGORY_HEADER_HEIGHT = 0.25\n\n# ============================================================================\n# HELPER FUNCTIONS\n# ============================================================================\n\ndef safe_float(value):\n    \"\"\"Safely convert to float, returning 0.0 on failure.\"\"\"\n    if value is None or value == \"\":\n        return 0.0\n    try:\n        return float(value)\n    except (ValueError, TypeError):\n        return 0.0\n\ndef estimate_postsell_wrap_lines(title):\n    if not title:\n        return 0\n    title_str = str(title)\n    length = len(title_str)\n    \n    # TRICK: Calculate ceiling without importing math module\n    # Formula: (numerator + denominator - 1) // denominator\n    total_lines = (length + POSTSELL_TITLE_CHARS_PER_LINE - 1) // POSTSELL_TITLE_CHARS_PER_LINE\n    \n    return max(0, total_lines - 1)\n\ndef calculate_group_actual_height(feature_row, postsell_rows):\n    feature_height = safe_float(feature_row.get('HEIGHT'))\n    \n    # Calculate wrap lines\n    total_wrap_lines = 0\n    for p_row in postsell_rows:\n        p_title = p_row.get('POSTSELL3')\n        if p_title:\n            total_wrap_lines += estimate_postsell_wrap_lines(p_title)\n            \n    # Calculate Base Heights\n    postsell_base = sum([safe_float(p.get('HEIGHT')) for p in postsell_rows])\n    \n    # Calculate Adjustment\n    wrap_adjustment = total_wrap_lines * 0.12\n    \n    return {\n        'total_height': feature_height + postsell_base + wrap_adjustment,\n        'wrap_lines': total_wrap_lines\n    }\n\n# ============================================================================\n# MAIN LOGIC\n# ============================================================================\n\n# 1. GET DATA\n# FIX: Use bracket notation ['json'] instead of dot notation .json\nrows = [item['json'] for item in _items]\n\n# 2. INITIALIZE TRACKING\nseen_subcategories = set()\n\n# Initialize default values\nfor row in rows:\n    row['ACTUAL_HEIGHT'] = 0.0\n    row['WRAP_LINES'] = 0\n    row['COLUMN_AVAILABLE'] = FULL_COLUMN_HEIGHT\n    row['COLUMN_FILL_PCT'] = 0.0\n    row['IS_FEATURE'] = False\n\n# 3. PROCESS ROWS\nfor i in range(len(rows)):\n    current_row = rows[i]\n    \n    # --- Space Calculation ---\n    page = current_row.get('PAGE')\n    category = current_row.get('CATEGORY')\n    subcategory = current_row.get('SUBCATEGORY', '')\n    \n    available_height = FULL_COLUMN_HEIGHT - PAGE_HEADER_REDUCTION\n    \n    # Check Subcategory Header\n    if subcategory and str(subcategory).strip():\n        key = f\"{page}_{category}_{subcategory}\"\n        if key not in seen_subcategories:\n            available_height -= SUBCATEGORY_HEADER_HEIGHT\n            seen_subcategories.add(key)\n    \n    current_row['COLUMN_AVAILABLE'] = available_height\n\n    # --- Density Calculation ---\n    sku = current_row.get('SKU')\n    \n    if sku and str(sku).strip():\n        current_row['IS_FEATURE'] = True\n        \n        # Look ahead for postsells\n        postsell_rows = []\n        next_idx = i + 1\n        \n        while next_idx < len(rows):\n            next_row = rows[next_idx]\n            next_sku = next_row.get('SKU')\n            \n            if next_sku and str(next_sku).strip():\n                break\n                \n            h = safe_float(next_row.get('HEIGHT'))\n            if h > 0:\n                postsell_rows.append(next_row)\n            \n            next_idx += 1\n            \n        # Perform Calculation\n        calc = calculate_group_actual_height(current_row, postsell_rows)\n        \n        # Update Row (using built-in round)\n        current_row['ACTUAL_HEIGHT'] = round(calc['total_height'], 3)\n        current_row['WRAP_LINES'] = calc['wrap_lines']\n        \n        if available_height > 0:\n            pct = (calc['total_height'] / available_height) * 100\n            current_row['COLUMN_FILL_PCT'] = round(pct, 1)\n\n# 4. OUTPUT\n# n8n automatically wraps this back into the correct structure\nreturn rows"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -336,
+        80
+      ],
+      "id": "6346dbe1-7abf-4988-b626-cd17e3250c79",
+      "name": "assign actual heights"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# ============================================================================\n# CONFIGURATION\n# ============================================================================\nFULL_COLUMN_HEIGHT = 9.625\nPAGE_HEADER_REDUCTION = 0.66    # Reduces Columns 1 & 2\nSUBCATEGORY_HEADER_HEIGHT = 0.25\n\n# ============================================================================\n# HELPER FUNCTIONS\n# ============================================================================\n\ndef safe_float(val):\n    try:\n        return float(val)\n    except (ValueError, TypeError):\n        return 0.0\n\ndef get_column_height(col_idx):\n    # Columns 1 and 2 get reduced height for page header\n    if col_idx in [1, 2]:\n        return FULL_COLUMN_HEIGHT - PAGE_HEADER_REDUCTION\n    return FULL_COLUMN_HEIGHT\n\ndef get_group_key(row):\n    # Returns a unique tuple for (Category, Subcategory)\n    cat = row.get('CATEGORY')\n    sub = row.get('SUBCATEGORY')\n    if sub is None or str(sub).strip() == \"\" or str(sub).lower() == \"nan\":\n        sub = \"__NONE__\"\n    return (cat, sub)\n\n# ============================================================================\n# MAIN LOGIC\n# ============================================================================\n\n# 1. LOAD DATA\ninput_rows = [item['json'] for item in _items]\n\n# 2. BUNDLE FEATURES WITH POSTSELLS\nbundles = []\ncurrent_bundle = None\n\nfor i, row in enumerate(input_rows):\n    is_feat = row.get('IS_FEATURE')\n    # Handle boolean or string \"True\"\n    if is_feat is True or str(is_feat).lower() == 'true':\n        if current_bundle:\n            bundles.append(current_bundle)\n        current_bundle = {\n            'feature_row': row,\n            'postsell_rows': [],\n            'height': safe_float(row.get('ACTUAL_HEIGHT')),\n            'group_key': get_group_key(row)\n        }\n    else:\n        if current_bundle:\n            current_bundle['postsell_rows'].append(row)\n\nif current_bundle:\n    bundles.append(current_bundle)\n\n# 3. GROUP BY CATEGORY & SUBCATEGORY\ngrouped_data = {} \nfor bundle in bundles:\n    k = bundle['group_key']\n    if k not in grouped_data:\n        grouped_data[k] = []\n    grouped_data[k].append(bundle)\n\n# 4. REFLOW / BIN PACKING WITH SAFETY VALVE\noutput_rows = []\ncurrent_page = 1\ncurrent_col = 1\navailable_height = get_column_height(current_col)\n\nfor group_key, bundle_list in grouped_data.items():\n    subcategory_header_needed = True \n    \n    while len(bundle_list) > 0:\n        fit_index = -1\n        header_penalty = SUBCATEGORY_HEADER_HEIGHT if subcategory_header_needed else 0.0\n        \n        # A. ATTEMPT TO FIND FIT\n        for i, bundle in enumerate(bundle_list):\n            required_space = bundle['height'] + header_penalty\n            if required_space <= available_height:\n                fit_index = i\n                break\n        \n        # B. NO FIT FOUND? NEW COLUMN\n        if fit_index == -1:\n            current_col += 1\n            if current_col > 3:\n                current_col = 1\n                current_page += 1\n            \n            # Reset Height\n            available_height = get_column_height(current_col)\n            \n            # --- SAFETY VALVE ---\n            # Check if the FIRST bundle is inherently too big for even a fresh column.\n            # If yes, we FORCE it to place here (Overflow) to prevent infinite loop.\n            first_bundle_req = bundle_list[0]['height'] + header_penalty\n            \n            if first_bundle_req > available_height:\n                fit_index = 0 # Force placement of the blocker\n            else:\n                # If it theoretically fits, restart loop to let \"Best Fit\" find it (or a smaller item)\n                continue \n\n        # C. EXECUTE PLACEMENT (Only runs if fit found or forced)\n        bundle = bundle_list.pop(fit_index)\n        \n        if subcategory_header_needed:\n            available_height -= SUBCATEGORY_HEADER_HEIGHT\n            subcategory_header_needed = False\n        \n        # Reduce available height (this can go negative if we forced an overflow)\n        available_height -= bundle['height']\n        \n        # Add to Output\n        f_row = bundle['feature_row'].copy()\n        f_row['page_renumber'] = current_page\n        f_row['column_number'] = current_col\n        output_rows.append(f_row)\n        \n        for p_row in bundle['postsell_rows']:\n            p_copy = p_row.copy()\n            p_copy['page_renumber'] = current_page\n            p_copy['column_number'] = current_col\n            output_rows.append(p_copy)\n\n# 5. ASSIGN POSITIONS\nfinal_rows = []\nposition_tracker = {}\n\nfor row in output_rows:\n    p = row['page_renumber']\n    c = row['column_number']\n    key = f\"{p}_{c}\"\n    \n    is_feat = row.get('IS_FEATURE')\n    if is_feat is True or str(is_feat).lower() == 'true':\n        curr_count = position_tracker.get(key, 0) + 1\n        position_tracker[key] = curr_count\n        row['position'] = curr_count\n    else:\n        row['position'] = None\n        \n    final_rows.append(row)\n\nreturn final_rows"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        80
+      ],
+      "id": "4900c9cb-c7a6-45c2-bc17-ceac2d791dc2",
+      "name": "maximize space by reallocating column usage"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "assign initial heights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "assign initial heights": {
+      "main": [
+        [
+          {
+            "node": "assign actual heights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "assign actual heights": {
+      "main": [
+        [
+          {
+            "node": "maximize space by reallocating column usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "maximize space by reallocating column usage": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "f4234ed5-af8e-4568-9f93-65b4094601c2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "t7CFmcOdcDSUqNNi",
+  "tags": []
+}

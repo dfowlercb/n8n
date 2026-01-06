@@ -1,0 +1,243 @@
+{
+  "name": "catalog picks - BATCHED",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1456,
+        16
+      ],
+      "id": "4f5e9578-750a-49d4-a85a-7e10f1f578f7",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "10bucoPFwtqYxHhr",
+          "mode": "list",
+          "cachedResultName": "current_seasonal_baseline",
+          "cachedResultUrl": "/projects/EgkKYeoNt3ZOmjUb/datatables/10bucoPFwtqYxHhr"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        -1248,
+        16
+      ],
+      "id": "855d39a1-3523-4484-bc6d-b4c8be8b254b",
+      "name": "PROMO RESULTS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- CONFIGURATION ---\nconst MAX_PAGES = 64;\nconst ITEMS_PER_PAGE = 10;\nconst HERO_ITEMS_COUNT = 30;\n\nfunction cleanMoney(val) {\n  if (typeof val === 'number') return val;\n  if (!val) return 0;\n  return parseFloat(val.toString().replace(/[$,%]/g, ''));\n}\n\nlet allItems = items.map(item => {\n  const json = item.json;\n  const sales = cleanMoney(json['Promo Net Sales']);\n  const margin = cleanMoney(json['Promo Margin %']);\n  const lift = cleanMoney(json['Promo Lift Sales']);\n  const score = (sales * 0.5) + (lift * 0.2) + (margin * 1000 * 0.3);\n  \n  let cat = json['OFFICERS_CATEGORY'] || json['Category'] || 'General';\n  const desc = (json['Item Description'] || '').toUpperCase();\n  \n  if (!json['OFFICERS_CATEGORY']) {\n    if (desc.includes('BIBLE') || desc.includes('NIV') || desc.includes('ESV')) cat = 'BIBLES';\n    else if (desc.includes('HC') || desc.includes('PB') || desc.includes('BOOK')) cat = 'BOOKS';\n    else if (desc.includes('GIFT') || desc.includes('SET')) cat = 'GIFTS';\n  }\n\n  return {\n    json: {\n      ...json,\n      clean_sales: sales,\n      clean_category: cat,\n      catalog_score: score\n    }\n  };\n});\n\nallItems = allItems.filter(i => !isNaN(i.json.clean_sales));\nallItems.sort((a, b) => b.json.catalog_score - a.json.catalog_score);\nconst topItems = allItems.slice(0, MAX_PAGES * ITEMS_PER_PAGE);\n\nconst heroes = topItems.slice(0, HERO_ITEMS_COUNT);\nheroes.forEach((item, index) => {\n  const page = Math.floor(index / ITEMS_PER_PAGE) + 1;\n  item.json.Layout_Section = `Page ${page} (Hero/Best Seller)`;\n});\n\nconst body = topItems.slice(HERO_ITEMS_COUNT);\nbody.sort((a, b) => {\n  if (a.json.clean_category < b.json.clean_category) return -1;\n  if (a.json.clean_category > b.json.clean_category) return 1;\n  return b.json.catalog_score - a.json.catalog_score;\n});\n\nconst startPage = 4;\nbody.forEach((item, index) => {\n  const page = startPage + Math.floor(index / ITEMS_PER_PAGE);\n  item.json.Layout_Section = `Page ${page} (${item.json.clean_category})`;\n});\n\nconst finalCatalog = [...heroes, ...body];\nreturn finalCatalog;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1056,
+        16
+      ],
+      "id": "08ec4bfd-ef03-4179-8f92-91a91d7f943a",
+      "name": "PICK SKUS FOR CATALOG"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create batch configuration for loading parts table\n// We'll load 10,000 records at a time\n\nconst BATCH_SIZE = 10000;\nconst TOTAL_ESTIMATED_RECORDS = 100000; // Adjust to your actual parts count\nconst TOTAL_BATCHES = Math.ceil(TOTAL_ESTIMATED_RECORDS / BATCH_SIZE);\n\n// Create batch definitions\nconst batches = [];\nfor (let i = 0; i < TOTAL_BATCHES; i++) {\n  batches.push({\n    json: {\n      batchNumber: i + 1,\n      offset: i * BATCH_SIZE,\n      limit: BATCH_SIZE,\n      totalBatches: TOTAL_BATCHES\n    }\n  });\n}\n\nreturn batches;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -848,
+        16
+      ],
+      "id": "78713585-c6a5-428f-9a5d-e6a021a1f778",
+      "name": "Create Batch Config"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -656,
+        16
+      ],
+      "id": "104eb968-9675-4894-a9a9-1fded34877a2",
+      "name": "Loop Through Batches"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "Pqqd0qZlVl1uVYpJ",
+          "mode": "list",
+          "cachedResultName": "n8nparts",
+          "cachedResultUrl": "/projects/EgkKYeoNt3ZOmjUb/datatables/Pqqd0qZlVl1uVYpJ"
+        },
+        "limit": "={{ $json.limit }}",
+        "options": {
+          "offset": "={{ $json.offset }}"
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        80
+      ],
+      "id": "75af66ad-e8e6-4244-bfa8-e511feb4f536",
+      "name": "Load Parts Batch"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "batch-complete",
+              "leftValue": "={{ $json.batchNumber }}",
+              "rightValue": "={{ $json.totalBatches }}",
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        96
+      ],
+      "id": "5eece7cd-fe3d-48b7-9d20-963c5ae5a920",
+      "name": "Last Batch?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// This node aggregates ALL parts data from all batches\n// It runs only after the last batch\n\n// Get all batches from the Split in Batches node\nconst allBatchOutputs = $('Load Parts Batch').all();\n\n// Flatten all parts into a single array\nconst allParts = allBatchOutputs.map(item => item.json);\n\nconsole.log(`Total parts loaded: ${allParts.length}`);\n\n// Build lookup map by SKU for fast matching\nconst partsMap = {};\nallParts.forEach(part => {\n  if (part.SKU) {\n    partsMap[part.SKU] = part;\n  }\n});\n\n// Get catalog items\nconst catalogItems = $('PICK SKUS FOR CATALOG').all();\n\nconsole.log(`Catalog items to enrich: ${catalogItems.length}`);\n\n// Merge: enrich catalog with parts data\nconst enrichedItems = catalogItems.map(item => {\n  const sku = item.json.SKU;\n  const partsData = partsMap[sku] || {};\n  \n  return {\n    json: {\n      ...item.json,\n      ...partsData\n    }\n  };\n});\n\nconsole.log(`Enriched items: ${enrichedItems.length}`);\n\nreturn enrichedItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        0
+      ],
+      "id": "005472ed-c36c-42a5-936c-25b258faaee2",
+      "name": "Merge Catalog with Parts"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "PROMO RESULTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PROMO RESULTS": {
+      "main": [
+        [
+          {
+            "node": "PICK SKUS FOR CATALOG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PICK SKUS FOR CATALOG": {
+      "main": [
+        [
+          {
+            "node": "Create Batch Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Batch Config": {
+      "main": [
+        [
+          {
+            "node": "Loop Through Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Through Batches": {
+      "main": [
+        [
+          {
+            "node": "Load Parts Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Through Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Parts Batch": {
+      "main": [
+        [
+          {
+            "node": "Last Batch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Last Batch?": {
+      "main": [
+        [
+          {
+            "node": "Merge Catalog with Parts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "772696b5-f03d-424e-8e51-f5b399dc31b1",
+  "meta": {
+    "instanceId": "5605c9fb756bfa168d22122a14cf038f60b01d43c8353976dd886ec5e9e6d10c"
+  },
+  "id": "fe73wHREBxxSaw9j",
+  "tags": []
+}
