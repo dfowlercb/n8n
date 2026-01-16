@@ -87,9 +87,18 @@ def combine_and_filter():
     merchant_df["is_merchant_pick"] = True
     print(f"  Loaded {MERCHANT_FILE}: {len(merchant_df)} rows")
 
+    # Get set of merchant SKUs for later use
+    merchant_skus = set(merchant_df["SKU"].unique())
+
     # Combine filtered promo data with merchant picks (missing columns become NaN)
     filtered = pd.concat([filtered, merchant_df], ignore_index=True)
     print(f"Final combined total: {len(filtered)} rows")
+
+    # Set is_merchant_pick=True for ALL rows with SKUs from merchantpicks.csv
+    # This handles duplicates from promo files that should be marked as merchant picks
+    filtered.loc[filtered["SKU"].isin(merchant_skus), "is_merchant_pick"] = True
+    merchant_pick_count = filtered["is_merchant_pick"].sum()
+    print(f"Marked {merchant_pick_count} rows as merchant picks")
 
     # Convert float columns that should be integers to nullable Int64
     int_columns = [
