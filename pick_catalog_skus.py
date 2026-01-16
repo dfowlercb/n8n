@@ -53,7 +53,7 @@ CONFIG = {
 INPUT_FILE = 'hx.csv'
 OUTPUT_FILE = 'catalog_skus.json'
 ONEDRIVE_PATH = 'onedrive:n8n'
-GDRIVE_PATH = 'gdrive:'
+GDRIVE_PATH = 'gdrive:dcatalog'
 
 # Category aliases for mapping
 CATEGORY_ALIASES = {
