@@ -33,6 +33,17 @@ def download_files():
         print(f"  Downloaded {filename}")
 
 
+def normalize_column(col):
+    """Normalize column names to UPPERCASE_WITH_UNDERSCORES for n8n compatibility."""
+    return (col
+        .strip()
+        .upper()
+        .replace(" ", "_")
+        .replace("%", "_PERC")
+        .replace("-", "_")
+    )
+
+
 def combine_and_filter():
     """Combine CSVs and filter by Disc Flag and Promo Net Sales."""
     dfs = []
@@ -49,29 +60,36 @@ def combine_and_filter():
             encoding="utf-8-sig",
             thousands=","
         )
-        df["is_merchant_pick"] = False
-        print(f"  Loaded {filename}: {len(df)} rows")
+        # Normalize column names IMMEDIATELY after loading
+        df.columns = [normalize_column(c) for c in df.columns]
+        df["IS_MERCHANT_PICK"] = False
+        print(f"  Loaded {filename}: {len(df)} rows, columns: {list(df.columns)[:5]}...")
         dfs.append(df)
 
     # Combine promo dataframes
     combined = pd.concat(dfs, ignore_index=True)
     print(f"Combined promo total: {len(combined)} rows")
 
-    # Ensure Promo Net Sales is numeric
-    combined["Promo Net Sales"] = pd.to_numeric(
-        combined["Promo Net Sales"].astype(str).str.replace(",", ""),
+    # Ensure PROMO_NET_SALES is numeric (using normalized column name)
+    combined["PROMO_NET_SALES"] = pd.to_numeric(
+        combined["PROMO_NET_SALES"].astype(str).str.replace(",", ""),
         errors="coerce"
     )
 
-    # Filter promo data: Disc Flag has no number AND Promo Net Sales >= 425
-    disc_flag_numeric = pd.to_numeric(combined["Disc Flag"], errors="coerce")
+    # Filter promo data: DISC_FLAG has no number AND PROMO_NET_SALES >= 425
+    disc_flag_numeric = pd.to_numeric(combined["DISC_FLAG"], errors="coerce")
     disc_flag_not_numeric = disc_flag_numeric.isna()
-    promo_net_sales_ok = combined["Promo Net Sales"] >= 425
+    promo_net_sales_ok = combined["PROMO_NET_SALES"] >= 425
 
     filtered = combined[disc_flag_not_numeric & promo_net_sales_ok].copy()
-    print(f"After filtering (Disc Flag non-numeric, Promo Net Sales >= 425): {len(filtered)} rows")
+    print(f"After filtering (DISC_FLAG non-numeric, PROMO_NET_SALES >= 425): {len(filtered)} rows")
+    
+    # Debug: Check OFFICERS_CATEGORY in filtered promo data
+    if "OFFICERS_CATEGORY" in filtered.columns:
+        cat_counts = filtered["OFFICERS_CATEGORY"].value_counts()
+        print(f"  OFFICERS_CATEGORY distribution (top 5): {cat_counts.head().to_dict()}")
 
-    # Load merchant picks with is_merchant_pick = True
+    # Load merchant picks with IS_MERCHANT_PICK = True
     merchant_path = Path(MERCHANT_FILE)
     if not merchant_path.exists():
         print(f"Error: {MERCHANT_FILE} not found", file=sys.stderr)
@@ -81,11 +99,16 @@ def combine_and_filter():
         dtype={"SKU": str},
         encoding="utf-8-sig"
     )
-    # Normalize column name
+    # Normalize column names IMMEDIATELY after loading
+    merchant_df.columns = [normalize_column(c) for c in merchant_df.columns]
+    merchant_df["IS_MERCHANT_PICK"] = True
+    print(f"  Loaded {MERCHANT_FILE}: {len(merchant_df)} rows, columns: {list(merchant_df.columns)}")
+    
+    # Debug: Check if merchant picks have OFFICERS_CATEGORY
     if "OFFICERS_CATEGORY" in merchant_df.columns:
-        merchant_df = merchant_df.rename(columns={"OFFICERS_CATEGORY": "Officers Category"})
-    merchant_df["is_merchant_pick"] = True
-    print(f"  Loaded {MERCHANT_FILE}: {len(merchant_df)} rows")
+        print(f"  Merchant OFFICERS_CATEGORY values: {merchant_df['OFFICERS_CATEGORY'].value_counts().to_dict()}")
+    else:
+        print(f"  ⚠ WARNING: Merchant picks missing OFFICERS_CATEGORY column!")
 
     # Get set of merchant SKUs for later use
     merchant_skus = set(merchant_df["SKU"].unique())
@@ -93,23 +116,31 @@ def combine_and_filter():
     # Combine filtered promo data with merchant picks (missing columns become NaN)
     filtered = pd.concat([filtered, merchant_df], ignore_index=True)
     print(f"Final combined total: {len(filtered)} rows")
+    
+    # Debug: Check OFFICERS_CATEGORY after concat
+    if "OFFICERS_CATEGORY" in filtered.columns:
+        non_empty = filtered["OFFICERS_CATEGORY"].notna() & (filtered["OFFICERS_CATEGORY"] != "")
+        print(f"  Rows with OFFICERS_CATEGORY after concat: {non_empty.sum()} / {len(filtered)}")
 
-    # Set is_merchant_pick=True for ALL rows with SKUs from merchantpicks.csv
+    # Set IS_MERCHANT_PICK=True for ALL rows with SKUs from merchantpicks.csv
     # This handles duplicates from promo files that should be marked as merchant picks
-    filtered.loc[filtered["SKU"].isin(merchant_skus), "is_merchant_pick"] = True
-    merchant_pick_count = filtered["is_merchant_pick"].sum()
+    filtered.loc[filtered["SKU"].isin(merchant_skus), "IS_MERCHANT_PICK"] = True
+    merchant_pick_count = filtered["IS_MERCHANT_PICK"].sum()
     print(f"Marked {merchant_pick_count} rows as merchant picks")
 
     # Convert float columns that should be integers to nullable Int64
     int_columns = [
-        "Family Link", "Promo Quantity",
-        "Regular Baseline Days", "Regular Baseline Quantity",
-        "Promo Lift Quantity", "Halo-Cannibal Quantity",
-        "Steal Vs Gain Quantity", "ON Hand", "ON Order"
+        "FAMILY_LINK", "PROMO_QUANTITY",
+        "REGULAR_BASELINE_DAYS", "REGULAR_BASELINE_QUANTITY",
+        "PROMO_LIFT_QUANTITY", "HALO_CANNIBAL_QUANTITY",
+        "STEAL_VS_GAIN_QUANTITY", "ON_HAND", "ON_ORDER"
     ]
     for col in int_columns:
         if col in filtered.columns:
             filtered[col] = filtered[col].astype("Int64")
+
+    # Final column list
+    print(f"Final columns: {list(filtered.columns)}")
 
     # Save to output file, keeping SKU as string
     filtered.to_csv(OUTPUT_FILE, index=False)
