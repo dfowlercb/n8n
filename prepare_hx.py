@@ -54,10 +54,6 @@ def combine_and_filter():
     combined = pd.concat(dfs, ignore_index=True)
     print(f"Combined total: {len(combined)} rows")
 
-    # Print dtypes for debugging
-    print("\nColumn dtypes:")
-    print(combined.dtypes.to_string())
-
     # Ensure Promo Net Sales is numeric (in case thousands separator didn't fully work)
     combined["Promo Net Sales"] = pd.to_numeric(
         combined["Promo Net Sales"].astype(str).str.replace(",", ""),
