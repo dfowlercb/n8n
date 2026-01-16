@@ -43,7 +43,7 @@ def combine_and_filter():
         # Use encoding='utf-8-sig' to handle BOM
         df = pd.read_csv(
             path,
-            dtype={"SKU": str, "Disc Flag": str},
+            dtype={"SKU": str, "Disc Flag": str, "Sale Code": str},
             encoding="utf-8-sig",
             thousands=","  # Handle commas in numbers like "7,238.32"
         )
@@ -75,7 +75,7 @@ def combine_and_filter():
 
     # Convert float columns that should be integers to nullable Int64
     int_columns = [
-        "Sale Code", "Family Link", "Promo Quantity",
+        "Family Link", "Promo Quantity",
         "Regular Baseline Days", "Regular Baseline Quantity",
         "Promo Lift Quantity", "Halo-Cannibal Quantity",
         "Steal Vs Gain Quantity", "ON Hand", "ON Order"
