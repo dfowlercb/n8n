@@ -21,7 +21,7 @@ def download_files():
         source = f"{REMOTE}/{filename}"
         print(f"Downloading {source}...")
         result = subprocess.run(
-            ["rclone", "copy", source, "."],
+            ["rclone", "copy", "--ignore-times", source, "."],
             capture_output=True,
             text=True
         )
