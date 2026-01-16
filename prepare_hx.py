@@ -11,13 +11,15 @@ import pandas as pd
 from pathlib import Path
 
 REMOTE = "onedrive:n8n"
-FILES = ["hxcatalogseasonal.csv", "hxrecentseasonal.csv"]
+PROMO_FILES = ["hxcatalogseasonal.csv", "hxrecentseasonal.csv"]
+MERCHANT_FILE = "merchantpicks.csv"
+ALL_FILES = PROMO_FILES + [MERCHANT_FILE]
 OUTPUT_FILE = "hx.csv"
 
 
 def download_files():
     """Download files from OneDrive using rclone."""
-    for filename in FILES:
+    for filename in ALL_FILES:
         source = f"{REMOTE}/{filename}"
         print(f"Downloading {source}...")
         result = subprocess.run(
@@ -34,40 +36,60 @@ def download_files():
 def combine_and_filter():
     """Combine CSVs and filter by Disc Flag and Promo Net Sales."""
     dfs = []
-    for filename in FILES:
+
+    # Load promo files with is_merchant_pick = False
+    for filename in PROMO_FILES:
         path = Path(filename)
         if not path.exists():
             print(f"Error: {filename} not found", file=sys.stderr)
             sys.exit(1)
-        # Read with SKU as string to preserve leading zeros
-        # Use encoding='utf-8-sig' to handle BOM
         df = pd.read_csv(
             path,
             dtype={"SKU": str, "Disc Flag": str, "Sale Code": str},
             encoding="utf-8-sig",
-            thousands=","  # Handle commas in numbers like "7,238.32"
+            thousands=","
         )
+        df["is_merchant_pick"] = False
         print(f"  Loaded {filename}: {len(df)} rows")
         dfs.append(df)
 
-    # Combine the dataframes
+    # Combine promo dataframes
     combined = pd.concat(dfs, ignore_index=True)
-    print(f"Combined total: {len(combined)} rows")
+    print(f"Combined promo total: {len(combined)} rows")
 
-    # Ensure Promo Net Sales is numeric (in case thousands separator didn't fully work)
+    # Ensure Promo Net Sales is numeric
     combined["Promo Net Sales"] = pd.to_numeric(
         combined["Promo Net Sales"].astype(str).str.replace(",", ""),
         errors="coerce"
     )
 
-    # Filter: Disc Flag has no number AND Promo Net Sales >= 425
-    # Convert to numeric - if it fails (NaN), that means it's not a number, so include it
+    # Filter promo data: Disc Flag has no number AND Promo Net Sales >= 425
     disc_flag_numeric = pd.to_numeric(combined["Disc Flag"], errors="coerce")
     disc_flag_not_numeric = disc_flag_numeric.isna()
     promo_net_sales_ok = combined["Promo Net Sales"] >= 425
 
     filtered = combined[disc_flag_not_numeric & promo_net_sales_ok].copy()
     print(f"After filtering (Disc Flag non-numeric, Promo Net Sales >= 425): {len(filtered)} rows")
+
+    # Load merchant picks with is_merchant_pick = True
+    merchant_path = Path(MERCHANT_FILE)
+    if not merchant_path.exists():
+        print(f"Error: {MERCHANT_FILE} not found", file=sys.stderr)
+        sys.exit(1)
+    merchant_df = pd.read_csv(
+        merchant_path,
+        dtype={"SKU": str},
+        encoding="utf-8-sig"
+    )
+    # Normalize column name
+    if "OFFICERS_CATEGORY" in merchant_df.columns:
+        merchant_df = merchant_df.rename(columns={"OFFICERS_CATEGORY": "Officers Category"})
+    merchant_df["is_merchant_pick"] = True
+    print(f"  Loaded {MERCHANT_FILE}: {len(merchant_df)} rows")
+
+    # Combine filtered promo data with merchant picks (missing columns become NaN)
+    filtered = pd.concat([filtered, merchant_df], ignore_index=True)
+    print(f"Final combined total: {len(filtered)} rows")
 
     # Convert float columns that should be integers to nullable Int64
     int_columns = [
