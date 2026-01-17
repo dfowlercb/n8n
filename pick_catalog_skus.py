@@ -2,6 +2,7 @@
 """
 Catalog SKU Picker - Python Version
 Reads hx.csv (from prepare_hx.py), selects SKUs for catalog, outputs catalog_skus.json
+Outputs in n8n-compatible format with proper field names and types.
 """
 
 import csv
@@ -10,7 +11,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
+from datetime import datetime
 
 # =============================================================================
 # CONFIGURATION
@@ -52,8 +54,7 @@ CONFIG = {
 # File paths
 INPUT_FILE = 'hx.csv'
 OUTPUT_FILE = 'catalog_skus.json'
-ONEDRIVE_PATH = 'onedrive:n8n'
-GDRIVE_PATH = 'gdrive:dcatalog'
+REMOTE_PATH = 'gdrive:n8n'
 
 # Category aliases for mapping
 CATEGORY_ALIASES = {
@@ -77,6 +78,74 @@ CATEGORY_ALIASES = {
     'SALE': 'CLOSEOUTS',
 }
 
+# Field name mapping from UPPERCASE_CSV to Mixed_Case_n8n
+FIELD_NAME_MAP = {
+    'SKU': 'SKU',
+    'SALE_NAME': 'SALE_NAME',
+    'SALE_CODE': 'Sale_Code',
+    'PROMO_CODE': 'Promo_Code',
+    'ITEM_DESCRIPTION': 'Item_Description',
+    'FAMILY_LINK': 'Family_Link',
+    'PROMO_QUANTITY': 'Promo_Quantity',
+    'PROMO_UNIT_COST': 'Promo_Unit_Cost',
+    'PROMO_NET_SALES': 'Promo_Net_Sales',
+    'PROMO_PROFIT': 'Promo_Profit',
+    'PROMO_MARGIN__PERC': 'Promo_Margin_Perc',
+    'PROMO_AVG_RETAIL_PRICE': 'Promo_Avg_Retail_Price',
+    'REGULAR_BASELINE_DAYS': 'Regular_Baseline_Days',
+    'REGULAR_BASELINE_QUANTITY': 'Regular_Baseline_Quantity',
+    'REGULAR_BASELINE_UNIT_COST': 'Regular_Baseline_Unit_Cost',
+    'REGULAR_BASELINE_SALES': 'Regular_Baseline_Sales',
+    'REGULAR_BASELINE_PROFIT': 'Regular_Baseline_Profit',
+    'NON_PROMO_AVG_RETAIL_PRICE': 'Non_Promo_Avg_Retail_Price',
+    'REGULAR_BASELINE_MARGIN__PERC': 'Regular_Baseline_Margin_Perc',
+    'PROMO_LIFT_QUANTITY': 'Promo_Lift_Quantity',
+    'PROMO_LIFT_SALES': 'Promo_Lift_Sales',
+    'PROMO_LIFT_PROFIT': 'Promo_Lift_Profit',
+    'HALO_CANNIBAL_QUANTITY': 'Halo_Cannibal_Quantity',
+    'HALO_CANNIBAL_SALES': 'Halo_Cannibal_Sales',
+    'HALO_CANNIBAL_PROFIT': 'Halo_Cannibal_Profit',
+    'STEAL_VS_GAIN_QUANTITY': 'Steal_Vs_Gain_Quantity',
+    'STEAL_VS_GAIN_SALES': 'Steal_Vs_Gain_Sales',
+    'STEAL_VS_GAIN_PROFIT': 'Steal_Vs_Gain_Profit',
+    'IMPACT_QUANTITY': 'Impact_Quantity',
+    'IMPACT_SALES': 'Impact_Sales',
+    'IMPACT_PROFIT': 'Impact_Profit',
+    'LAST_DATE_RCVD': 'Last_Date_Rcvd',
+    'ON_HAND': 'ON_Hand',
+    'ON_ORDER': 'ON_Order',
+    'PO_EXPECTED_DATE': 'PO_Expected_Date',
+    'PROMO_CLASSIFICATION': 'Promo_Classification',
+    'OFFICERS_CATEGORY': 'OFFICERS_CATEGORY',
+    'DISC_FLAG': 'Disc_Flag',
+    'IS_MERCHANT_PICK': 'IS_MERCHANT_PICK',
+}
+
+# Fields that should be integers
+INT_FIELDS = {
+    'Promo_Quantity', 'Promo_Unit_Cost', 'Regular_Baseline_Days', 
+    'Regular_Baseline_Quantity', 'Promo_Lift_Quantity', 
+    'Halo_Cannibal_Quantity', 'Halo_Cannibal_Sales', 'Halo_Cannibal_Profit',
+    'Steal_Vs_Gain_Quantity', 'ON_Hand', 'ON_Order'
+}
+
+# Fields that should be floats
+FLOAT_FIELDS = {
+    'Promo_Net_Sales', 'Promo_Profit', 'Promo_Margin_Perc', 'Promo_Avg_Retail_Price',
+    'Regular_Baseline_Unit_Cost', 'Regular_Baseline_Sales', 'Regular_Baseline_Profit',
+    'Non_Promo_Avg_Retail_Price', 'Regular_Baseline_Margin_Perc',
+    'Promo_Lift_Sales', 'Promo_Lift_Profit', 
+    'Steal_Vs_Gain_Sales', 'Steal_Vs_Gain_Profit',
+    'Impact_Quantity', 'Impact_Sales', 'Impact_Profit'
+}
+
+# Fields that should remain strings
+STRING_FIELDS = {
+    'SKU', 'SALE_NAME', 'Sale_Code', 'Promo_Code', 'Item_Description',
+    'Promo_Classification', 'OFFICERS_CATEGORY', 'Disc_Flag', 'Last_Date_Rcvd',
+    'PO_Expected_Date'
+}
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -96,6 +165,82 @@ def parse_numeric(value) -> float:
         return float(cleaned)
     except ValueError:
         return 0.0
+
+
+def convert_value(value: Any, field_name: str) -> Any:
+    """Convert a value to the appropriate type for the field."""
+    if value is None or value == '':
+        if field_name in INT_FIELDS:
+            return 0
+        elif field_name in FLOAT_FIELDS:
+            return 0.0
+        elif field_name in STRING_FIELDS:
+            return '' if field_name != 'Promo_Code' else 'NA'
+        else:
+            return None
+    
+    # Handle string values
+    if isinstance(value, str):
+        # Remove % and clean numeric strings
+        cleaned = re.sub(r'[$,€£¥%]', '', value.strip())
+        
+        if field_name in INT_FIELDS:
+            try:
+                return int(float(cleaned)) if cleaned else 0
+            except ValueError:
+                return 0
+        elif field_name in FLOAT_FIELDS:
+            try:
+                # For margin/percentage fields, keep as decimal if already small
+                val = float(cleaned) if cleaned else 0.0
+                # Round to reasonable precision
+                return round(val, 2)
+            except ValueError:
+                return 0.0
+        elif field_name == 'Last_Date_Rcvd':
+            # Convert date format from MM/DD/YYYY to YYYY-MM-DD
+            try:
+                for fmt in ['%m/%d/%Y', '%Y-%m-%d', '%m/%d/%y']:
+                    try:
+                        dt = datetime.strptime(value.strip(), fmt)
+                        return dt.strftime('%Y-%m-%d')
+                    except ValueError:
+                        continue
+                return value  # Return as-is if no format matches
+            except:
+                return value
+        else:
+            return value
+    
+    # Already numeric
+    if field_name in INT_FIELDS:
+        return int(value)
+    elif field_name in FLOAT_FIELDS:
+        return round(float(value), 2)
+    
+    return value
+
+
+def transform_row(row: dict) -> dict:
+    """Transform a CSV row to n8n-compatible format with proper field names and types."""
+    transformed = {}
+    
+    for csv_field, n8n_field in FIELD_NAME_MAP.items():
+        if csv_field in row:
+            transformed[n8n_field] = convert_value(row[csv_field], n8n_field)
+    
+    # Handle Family_Link specially - should be None if empty, int otherwise
+    if 'Family_Link' in transformed:
+        val = transformed['Family_Link']
+        if val == '' or val == 0 or val is None:
+            transformed['Family_Link'] = None
+        elif isinstance(val, str):
+            try:
+                transformed['Family_Link'] = int(val)
+            except ValueError:
+                transformed['Family_Link'] = None
+    
+    return transformed
 
 
 def normalize(value: float, min_val: float, max_val: float) -> float:
@@ -195,13 +340,16 @@ def infer_category_from_description(description: str) -> Optional[str]:
 
 def determine_category(row: dict) -> Optional[str]:
     """Determine the configured category for an item."""
-    raw_category = row.get('OFFICERS_CATEGORY', '')
+    # Handle both field name formats
+    raw_category = row.get('OFFICERS_CATEGORY', '') or row.get('Officers_Category', '')
     
     mapped = map_to_configured_category(raw_category)
     if mapped:
         return mapped
     
-    return infer_category_from_description(row.get('ITEM_DESCRIPTION', ''))
+    # Handle both field name formats for description
+    description = row.get('Item_Description', '') or row.get('ITEM_DESCRIPTION', '')
+    return infer_category_from_description(description)
 
 
 def is_merchant_pick(value) -> bool:
@@ -236,23 +384,24 @@ def process_items(raw_items: list[dict]) -> tuple[list[dict], list[dict]]:
     regular_items = []
     
     for idx, row in enumerate(raw_items):
-        description = row.get('ITEM_DESCRIPTION', '')
+        # Transform to n8n field names and types
+        processed = transform_row(row)
         
-        processed = {
-            **row,
-            'original_index': idx,
-            'clean_sales': parse_numeric(row.get('PROMO_NET_SALES')),
-            'clean_margin': parse_numeric(row.get('PROMO_MARGIN__PERC')),
-            'clean_profit': parse_numeric(row.get('PROMO_PROFIT')),
-            'clean_lift': parse_numeric(row.get('PROMO_LIFT_SALES')),
-            'mapped_category': determine_category(row),
-            'raw_category': row.get('OFFICERS_CATEGORY', ''),
-            'family_key': extract_family_key(description),
-        }
+        description = processed.get('Item_Description', '')
+        
+        # Add computed fields
+        processed['original_index'] = idx
+        processed['clean_sales'] = parse_numeric(processed.get('Promo_Net_Sales', 0))
+        processed['clean_margin'] = parse_numeric(processed.get('Promo_Margin_Perc', 0))
+        processed['clean_profit'] = parse_numeric(processed.get('Promo_Profit', 0))
+        processed['clean_lift'] = parse_numeric(processed.get('Promo_Lift_Sales', 0))
+        processed['mapped_category'] = determine_category(processed)
+        processed['raw_category'] = processed.get('OFFICERS_CATEGORY', '')
+        processed['family_key'] = extract_family_key(description)
         
         if is_merchant_pick(row.get('IS_MERCHANT_PICK')):
             processed['is_merchant_pick'] = True
-            processed['catalog_score'] = 9999  # High score for guaranteed placement
+            processed['catalog_score'] = 9999.0  # High score for guaranteed placement
             merchant_picks.append(processed)
         else:
             processed['is_merchant_pick'] = False
@@ -304,7 +453,7 @@ def calculate_scores(items: list[dict]) -> None:
             lift_norm * weights['lift']
         ) * 1000
         
-        item['catalog_score'] = score
+        item['catalog_score'] = round(score, 2)
 
 
 def deduplicate_skus(items: list[dict]) -> list[dict]:
@@ -333,7 +482,7 @@ def deduplicate_skus(items: list[dict]) -> list[dict]:
                 combined = dupes[0].copy()
                 combined['clean_sales'] = sum(d['clean_sales'] for d in dupes)
                 combined['clean_profit'] = sum(d['clean_profit'] for d in dupes)
-                combined['catalog_score'] = sum(d.get('catalog_score', 0) for d in dupes) / len(dupes)
+                combined['catalog_score'] = round(sum(d.get('catalog_score', 0) for d in dupes) / len(dupes), 2)
                 deduped.append(combined)
             else:  # 'first'
                 deduped.append(dupes[0])
@@ -494,30 +643,29 @@ def build_catalog(merchant_picks: list[dict], regular_items: list[dict]) -> list
 
 
 def upload_to_drive(filepath: str):
-    """Upload file to OneDrive and Google Drive using rclone."""
-    # Upload to OneDrive
-    print(f"\nUploading {filepath} to {ONEDRIVE_PATH}...")
+    """Upload file to Google Drive using rclone, replacing any existing file."""
+    filename = Path(filepath).name
+    remote_file = f"{REMOTE_PATH}/{filename}"
+    
+    # Delete existing file first (ignore errors if it doesn't exist)
+    print(f"\nRemoving old {remote_file} if it exists...")
+    subprocess.run(
+        ['rclone', 'delete', remote_file],
+        capture_output=True,
+        text=True
+    )
+    
+    # Upload new file
+    print(f"Uploading {filepath} to {REMOTE_PATH}...")
     result = subprocess.run(
-        ['rclone', 'copy', '--ignore-times', filepath, ONEDRIVE_PATH],
+        ['rclone', 'copy', filepath, REMOTE_PATH],
         capture_output=True,
         text=True
     )
     if result.returncode != 0:
-        print(f"OneDrive upload failed: {result.stderr}", file=sys.stderr)
-    else:
-        print(f"  Uploaded to OneDrive successfully!")
-
-    # Upload to Google Drive
-    print(f"Uploading {filepath} to {GDRIVE_PATH}...")
-    result = subprocess.run(
-        ['rclone', 'copy', '--ignore-times', filepath, GDRIVE_PATH],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        print(f"Google Drive upload failed: {result.stderr}", file=sys.stderr)
-    else:
-        print(f"  Uploaded to Google Drive successfully!")
+        print(f"Upload failed: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Uploaded successfully!")
 
 
 def main():
@@ -566,10 +714,10 @@ def main():
     print(f"Unique families featured: {len(featured_families)}")
     print("=" * 60)
     
-    # Save output
+    # Save output (compact JSON, raw array - n8n will wrap in 'data' automatically)
     print(f"\nSaving to {OUTPUT_FILE}...")
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(final_catalog, f, indent=2)
+        json.dump(final_catalog, f, separators=(',', ':'))
     print(f"Saved {len(final_catalog)} items")
     
     # Upload
